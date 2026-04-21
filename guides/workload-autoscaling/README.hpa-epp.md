@@ -6,6 +6,11 @@ By using gateway-level signals like queue size and active request counts,
 you can achieve more responsive and model-aware scaling than with traditional
 CPU/Memory metrics.
 
+> **Hardware-specific variants:** For a fully worked Intel XPU (Arc / BMG / Max)
+> walkthrough — including the exact Prometheus Adapter rules, HPA manifest,
+> and observed scale-up/scale-down timing against an XPU inference-scheduling
+> stack — see [README.hpa-epp.xpu.md](./README.hpa-epp.xpu.md).
+
 ## Overview
 
 Traditional autoscaling often relies on resource utilization (CPU/GPU). However, for LLM
