@@ -1,3 +1,12 @@
+helm install pd-epp \
+  oci://registry.k8s.io/gateway-api-inference-extension/charts/standalone \
+  -f guides/recipes/scheduler/base.values.yaml \
+  -f guides/recipes/scheduler/features/monitoring.values.yaml \
+  -f guides/pd-disaggregation/scheduler/values.yaml \
+  -n rob-dev \
+  --version v1.4.0
+
+
 # Well-lit Path: P/D Disaggregation
 
 [![Nightly - PD Disaggregation E2E (OpenShift)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-ocp.yaml/badge.svg)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-ocp.yaml) [![Nightly - PD Disaggregation E2E (CKS)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-cks.yaml/badge.svg)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-cks.yaml) [![Nightly - PD Disaggregation E2E (GKE)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-gke.yaml/badge.svg)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-gke.yaml)
