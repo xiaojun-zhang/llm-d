@@ -13,6 +13,7 @@ spec:
             - --connector=nixlv2
             - --zap-log-level=1
             - --secure-proxy=false
+            - --enable-prefiller-sampling
           image: ghcr.io/llm-d/llm-d-routing-sidecar:v0.7.1
           imagePullPolicy: Always
           ports:
