@@ -1,5 +1,5 @@
 ```
-kustomize build guides/pd-disaggregation/modelserver/nvidia-gpu/vllm/ | kubectl apply -n rob-dev -f -
+kustomize build guides/pd-disaggregation/modelserver/nvidia-gpu/vllm/base | kubectl apply -n rob-dev -f -
 ```
 
 ```
