@@ -29,7 +29,7 @@ jobs:
       guide_name: pd-disaggregation
       namespace: llm-d-nightly-pd-xpu
       release_name_postfix: pd
-      httproute_file: guides/pd-disaggregation/httproute.yaml
+      httproute_file: httproute.yaml
       pod_wait_timeout: '10m'
       llm_d_ref: ${{ github.ref }}
       skip_cleanup: ${{ github.event.inputs.skip_cleanup == 'true' }}
