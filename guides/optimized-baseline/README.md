@@ -42,7 +42,6 @@ This guide includes configurations for the following accelerators:
 
 ## Prerequisites
 
-- Install the [Gateway API Inference Extension CRDs](https://github.com/kubernetes-sigs/gateway-api-inference-extension/tree/v1.4.0/config/crd)
 - Have the [proper client tools installed on your local system](../../helpers/client-setup/README.md) to use this guide.
 - Checkout llm-d repo:
 
@@ -50,39 +49,71 @@ This guide includes configurations for the following accelerators:
     export branch="main" # branch, tag, or commit hash
     git clone https://github.com/llm-d/llm-d.git && cd llm-d && git checkout ${branch}
   ```
+- Set the following environment variables:
+  ```bash
+    export GAIE_VERSION=v1.4.0
+    export GUIDE_NAME="optimized-baseline"
+    export NAMESPACE=llm-d-optimized-baseline
+    export MODEL_NAME="Qwen/Qwen3-32B"
+  ```
+- Install the Gateway API Inference Extension CRDs:
+
+  ```bash
+    kubectl apply -k "https://github.com/kubernetes-sigs/gateway-api-inference-extension/config/crd?ref=${GAIE_VERSION}"
+  ```
+- Create a target namespace for the installation
+  ```bash
+      kubectl create namespace ${NAMESPACE}
+  ```
 
 ## Installation Instructions
 
-### 1. Prepare a Target Namespace
+### 1. Deploy the Inference Scheduler
 
-- Create a target namespace for the installation.
+#### Standalone Mode
 
-  ```bash
-  export NAMESPACE=llm-d-optimized-baseline
-  kubectl create namespace ${NAMESPACE}
-  ```
-
-### 2. Deploy the Standalone Inference Scheduler
-
-This deploys the inference scheduler with an Envoy sidecar.
+This deploys the inference scheduler with an Envoy sidecar, it doesn't set up a Kubernetes Gateway.
 
 ```bash
-helm install optimized-baseline \
-  oci://registry.k8s.io/gateway-api-inference-extension/charts/standalone \
-  -f guides/recipes/scheduler/base.values.yaml \
-  -f guides/optimized-baseline/scheduler/optimized-baseline.values.yaml \
-  -n ${NAMESPACE} --version v1.4.0
+helm install ${GUIDE_NAME} \
+    oci://registry.k8s.io/gateway-api-inference-extension/charts/standalone \
+    -f guides/recipes/scheduler/base.values.yaml \
+    -f guides/${GUIDE_NAME}/scheduler/${GUIDE_NAME}.values.yaml \
+    -n ${NAMESPACE} --version v1.4.0
 ```
 
-### 3. Deploy the Model Server
+<details>
+<summary><h4>Gateway Mode</h4></summary>
+
+To use a Kubernetes Gateway managed proxy rather than the standalone version, follow these steps instead of applying the previous Helm chart:
+
+1. *Deploy a Kubernetes Gateway* named by following one of [the gateway guides](../prereq/gateways).
+2. *Deploy the inference scheduler and an HTTPRoute* that connects it to the Gateway as follows:
+
+```bash
+export PROVIDER_NAME=gke # options: none, gke, agentgateway, istio
+helm install ${GUIDE_NAME} \
+    oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool  \
+    -f guides/recipes/scheduler/base.values.yaml \
+    -f guides/${GUIDE_NAME}/scheduler/${GUIDE_NAME}.values.yaml \
+    --set provider.name=${PROVIDER_NAME} \
+    --set experimentalHttpRoute.enabled=true \
+    --set experimentalHttpRoute.inferenceGatewayName=llm-d-inference-gateway \
+    -n ${NAMESPACE} --version v1.4.0
+```
+
+</details>
+
+
+### 2. Deploy the Model Server
 
 Apply the Kustomize overlays for your specific backend (defaulting to NVIDIA GPU / vLLM):
 
 ```bash
-kubectl apply -n ${NAMESPACE} -k guides/optimized-baseline/modelserver/gpu/vllm/
+kubectl apply -n ${NAMESPACE} -k guides/${GUIDE_NAME}/modelserver/gpu/vllm/
 ```
 
-### 4. Enable monitoring (optional)
+### 3. Enable monitoring (optional)
 
 > [!NOTE]
 > GKE provides [automatic application monitoring](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/configure-automatic-application-monitoring) out of the box. The llm-d [Monitoring stack](../../docs/monitoring/README.md) is not required for GKE, but it is available if you prefer to use it.
@@ -96,33 +127,43 @@ kubectl apply -n ${NAMESPACE} -k guides/recipes/modelserver/components/monitorin
 
 ## Verification
 
-### 1. Port-Forward to the Scheduler Service
+### 1. Get the IP of the Proxy
 
-Expose the standalone inference scheduler service to your local environment:
+**Standalone Mode**
 
 ```bash
-kubectl port-forward -n ${NAMESPACE} svc/optimized-baseline-epp 8000:8081
+export IP=$(kubectl get service ${GUIDE_NAME}-epp -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
 ```
+
+<details>
+<summary> <b>Gateway Mode</b> </summary>
+
+```bash
+export IP=$(kubectl get gateway llm-d-inference-gateway -n ${NAMESPACE} -o jsonpath='{.status.addresses[0].value}')
+```
+</details>
 
 ### 2. Send Test Requests
 
-In a separate terminal, verify model availability and inference:
-
-**List Available Models:**
+**Open a temporary interactive shell inside the cluster:**
 
 ```bash
-curl -s http://localhost:8000/v1/models | jq
+kubectl run curl-debug --rm -it \
+    --image=cfmanteiga/alpine-bash-curl-jq \
+    --env="IP=$IP" \
+    --env="NAMESPACE=$NAMESPACE" \
+    -- /bin/bash
 ```
 
-**Send a Completion Request:**
+**Send a completion request:**
 
 ```bash
-curl -X POST http://localhost:8000/v1/completions \
-  -H 'Content-Type: application/json' \
-  -d '{
+curl -X POST http://${IP}/v1/completions \
+    -H 'Content-Type: application/json' \
+    -d '{
         "model": "Qwen/Qwen3-32B",
         "prompt": "How are you today?"
-      }' | jq
+    }' | jq
 ```
 
 ## Benchmarking
@@ -145,14 +186,25 @@ For more details, refer to the [benchmark instructions doc](../../helpers/benchm
 ### 2. Download the Workload Template
 
 ```bash
-curl -LJO "https://raw.githubusercontent.com/llm-d/llm-d/main/guides/optimized-baseline/benchmark-templates/shared_prefix.yaml"
+curl -LJO "https://raw.githubusercontent.com/llm-d/llm-d/main/guides/${GUIDE_NAME}/benchmark-templates/shared_prefix.yaml"
 ```
 
 ### 3. Execute Benchmark
 
 ```bash
-export GATEWAY_SVC=optimized-baseline-epp
-export PORT=8081
+export IP=$(kubectl get service ${GUIDE_NAME}-epp  -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+```
+
+<details>
+<summary> <b>Click here for Gateway Mode</b> </summary>
+
+```bash
+export IP=$(kubectl get gateway llm-d-inference-gateway  -n ${NAMESPACE} -o jsonpath='{.status.addresses[0].value}')
+```
+</details>
+
+```bash
+export NAMESPACE=default
 envsubst < shared_prefix.yaml > config.yaml
 ./run_only.sh -c config.yaml -o ./results
 ```
@@ -162,8 +214,8 @@ envsubst < shared_prefix.yaml > config.yaml
 To remove the deployed components:
 
 ```bash
-helm uninstall optimized-baseline -n ${NAMESPACE}
-kubectl delete -n ${NAMESPACE} -k guides/optimized-baseline/modelserver/gpu/vllm/
+helm uninstall ${GUIDE_NAME} -n ${NAMESPACE}
+kubectl delete  -n ${NAMESPACE} -k guides/${GUIDE_NAME}/modelserver/gpu/vllm/
 ```
 
 ## Benchmarking Report
