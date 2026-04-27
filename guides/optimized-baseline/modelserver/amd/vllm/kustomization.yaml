@@ -3,23 +3,19 @@ kind: Kustomization
 resources:
   - ../../../../recipes/modelserver/base/single-host/default
 
-# To disable monitoring comment the following component out
-components:
-  - ../../../../recipes/modelserver/components/monitoring
-
-namePrefix: optimized-baseline-nvidia-gpu-sglang-
+namePrefix: optimized-baseline-rocm-vllm-
 
 images:
   - name: REPLACE_MODEL_SERVER_IMAGE
-    newName: docker.io/lmsysorg/sglang
-    newTag: v0.5.10.post1
+    newName: ghcr.io/llm-d/llm-d-rocm
+    newTag: v0.6.0
 
 labels:
   - pairs:
       llm-d.ai/guide: optimized-baseline
       llm-d.ai/model: Qwen3-32B
       llm-d.ai/accelerator-variant: gpu
-      llm-d.ai/accelerator-vendor: nvidia
+      llm-d.ai/accelerator-vendor: amd
     includeSelectors: true
     includeTemplates: true
     fields:
@@ -54,4 +50,4 @@ labels:
         create: true
 
 patches:
-  - path: patch-sglang.yaml
+  - path: patch-vllm.yaml

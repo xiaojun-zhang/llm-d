@@ -27,7 +27,7 @@ This example out of the box uses 16 GPUs (8 replicas x 2 GPUs each) of any suppo
   kubectl create namespace ${NAMESPACE}
   ```
 
-- [Create the `llm-d-hf-token` secret in your target namespace with the key `HF_TOKEN` matching a valid HuggingFace token](../../helpers/client-setup/hf-token.md) to pull models.
+- [Create the `llm-d-hf-token` secret in your target namespace with the key `HF_TOKEN` matching a valid HuggingFace token](../../helpers/hf-token.md) to pull models.
 
 ## Installation
 
@@ -68,7 +68,7 @@ helmfile apply -e kgateway -n ${NAMESPACE}     # deprecated migration path
 
 To see what gateway options are supported refer to our [gateway provider prereq doc](../prereq/gateway-provider/README.md#supported-providers). Gateway configurations per provider are tracked in the [gateway-configurations directory](../prereq/gateway-provider/common-configurations/).
 
-You can also customize your gateway, for more information on how to do that see our [gateway customization docs](../../docs/customizing-your-gateway.md).
+You can also customize your gateway, for more information on how to do that see our [gateway customization docs](../04_customizing_a_guide.md).
 
 #### Intel XPU deployment
 
@@ -152,7 +152,7 @@ replicaset.apps/ms-kv-events-llm-d-modelservice-decode-548bfbc7d6   8         8 
 
 ## Testing this "well lit path"
 
-We have docs on getting started sending inference requests [available here](../../docs/getting-started-inferencing.md) that are general to all examples. However, this example has unique instructions to interact with it which will be provided here:
+We have docs on getting started sending inference requests [available here](../02_verifying_a_guide.md) that are general to all examples. However, this example has unique instructions to interact with it which will be provided here:
 
 1. First, you will need to send a basic inference request to your gateway. For in depth documentation on how to do this, please see the link above, but a command will be provided to work out of the box with default settings:
 
@@ -616,4 +616,4 @@ helm uninstall ms-kv-events -n ${NAMESPACE}
 
 ## Customization
 
-For information on customizing a guide and tips to build your own, see [our docs](../../docs/customizing-a-guide.md)
+For information on customizing a guide and tips to build your own, see [our docs](../04_customizing_a_guide.md)
