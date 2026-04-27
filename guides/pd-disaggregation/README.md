@@ -1,44 +1,15 @@
-```
-kustomize build guides/pd-disaggregation/modelserver/nvidia-gpu/vllm/base | kubectl apply -n rob-dev -f -
-```
-
-```
-helm install pd-disaggregation \
-  oci://registry.k8s.io/gateway-api-inference-extension/charts/standalone \
-  -f guides/recipes/scheduler/base.values.yaml \
-  -f guides/recipes/scheduler/features/monitoring.values.yaml \
-  -f guides/pd-disaggregation/scheduler/values.yaml \
-  -n rob-dev \
-  --version v1.4.0
-```
-
-kubectl exec curl -- curl -i http://pd-disaggregation-epp:8081/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "openai/gpt-oss-120b",
-    "messages": [{"role":"user","content":"I am setting up a distributed LLM inference system on Kubernetes using the llm-d project with prefill-decode disaggregation. The architecture splits the forward pass into two stages: prefill pods process the input prompt and populate the KV cache, while decode pods handle the autoregressive token generation using that cache. A gateway sits in front, and an endpoint picker extension uses a plugin-based scheduler to decide which pods should serve each request. The scheduler evaluates prefix cache hits, active request counts, and queue depths to make routing decisions. Requests with long prompts benefit most from this split because prefill is compute-bound while decode is memory-bound, so running them on separately scaled pools improves utilization. With that context in mind, please explain in detail how KV cache transfer works between prefill and decode pods in such a system, what network protocols are typically used for that transfer, how the system handles cache invalidation when a decode pod evicts blocks, and what the tradeoffs are between co-locating prefill and decode versus fully disaggregating them. Please be thorough and technical in your response."}],
-    "max_tokens": 300
-  }'
-
-# Well-lit Path: P/D Disaggregation
+# P/D Disaggregation
 
 [![Nightly - PD Disaggregation E2E (OpenShift)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-ocp.yaml/badge.svg)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-ocp.yaml) [![Nightly - PD Disaggregation E2E (CKS)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-cks.yaml/badge.svg)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-cks.yaml) [![Nightly - PD Disaggregation E2E (GKE)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-gke.yaml/badge.svg)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-gke.yaml)
 
 ## Overview
 
-This guide demonstrates how to deploy GPT-OSS-120B using vLLM's P/D disaggregation support with NIXL. This guide has been validated on:
+This guide deploys `openai/gpt-oss-120b` with prefill-decode disaggregation, improving throughput per GPU and quality of service. Since disaggregation is natively built into EPP, we can compose features like prefix- and load-aware routing with disaggregated serving. In this example, we will demonstrate a deployment with:
 
-* an 8xH200 cluster with InfiniBand networking
-* an 8xH200 cluster on GKE with RoCE networking
+* 8 TP=1 Prefill Instances
+* 2 TP=4 Decode Instances
 
-> WARNING: We are still investigating and optimizing performance for other hardware and networking configurations
-
-In this example, we will demonstrate a deployment of `openai/gpt-oss-120b` with:
-
-* 4 TP=1 Prefill Workers
-* 1 TP=4 Decode Worker
-
-## P/D Best Practices
+### P/D Best Practices
 
 P/D disaggregation provides more flexibility in navigating the trade-off between throughput and interactivity([ref](https://arxiv.org/html/2506.05508v1)).
 In particular, due to the elimination of prefill interference to the decode phase, P/D disaggregation can achieve lower inter token latency (ITL), thus
@@ -49,7 +20,7 @@ improving interactivity. For a given ITL goal, P/D disaggregation can benefit ov
 
 However, P/D disaggregation is not a target for all workloads. We suggest exploring P/D disaggregation for workloads with:
 
-* Large models (e.g. gpt-oss-120b+, not gpt-oss-20B)
+* Medium-large models (e.g. gpt-oss-120b+)
 * Longer input sequence lengths (e.g 10k ISL | 1k OSL, not 200 ISL | 200 OSL)
 * Sparse MoE architectures with opportunities for wide-EP
 
@@ -58,230 +29,152 @@ As a result, as you tune your P/D deployments, we suggest focusing on the follow
 * **Heterogeneous Parallelism**: deploy P workers with less parallelism and more replicas and D workers with more parallelism and fewer replicas
 * **xPyD Ratios**: tuning the ratio of P workers to D workers to ensure balance for your ISL|OSL ratio
 
-For very large models leveraging wide-EP, traffic for KV cache transfer may contend with expert parallelism when the ISL|OSL ratio is also high. We recommend starting with RDMA for KV cache transfer before attempting to leverage TCP, as TCP transfer requires more tuning of UCX under NIXL.
+### Supported Hardware Backends
 
-## Hardware Requirements
+This guide includes configuration for the following accelerators:
 
-This guide expects 8 Nvidia GPUs of any kind, and RDMA via InfiniBand or RoCE between all pods in the workload.
+| Backend             | Directory                  | Notes                                      |
+| ------------------- | -------------------------- | ------------------------------------------ |
+| NVIDIA GPU (vLLM)   | `modelserver/gpu/vllm/`    | vLLM, tested nightly                       |
+| NVIDIA GPU (SGLang) | `modelserver/gpu/sglang/`  | SGLang, validated each release             |
+| Google TPU          | `modelserver/tpu/vllm/`    | GKE TPU, validated each releas             |
+| AMD GPU             | `modelserver/amd/vllm/`    | AMD GPU, community contributed             |
+| Intel XPU           | `modelserver/xpu/vllm/`    | Intel Data Center GPU Max 1550+            |
+| Intel Gaudi (HPU)   | `modelserver/hpu/vllm/`    | Gaudi 1/2/3 with DRA support               |
 
-### Intel HPU Hardware Requirements
-
-For Intel HPU deployments:
-* Intel Gaudi2/3 machine with at least 2 Gaudi2 cards.
+> [!NOTE]
+> Some hardware variants use reduced configurations (fewer replicas, smaller models) to enable CI testing for compatibility and regression checks. These configurations are maintained by their respective hardware vendors and are not guaranteed as production-ready examples. Users deploying on non-default hardware should review and adjust the configurations for their environment.
 
 ## Prerequisites
 
-* Have the [proper client tools installed on your local system](../../helpers/client-setup/README.md) to use this guide.
-* Configure and deploy your [Gateway control plane](../prereq/gateway-provider/README.md).
-* Have the [Monitoring stack](../../docs/monitoring/README.md) installed on your system.
-* Create a namespace for installation.
+- Have the [proper client tools installed on your local system](../../helpers/client-setup/README.md) to use this guide.
+- Checkout llm-d repo:
 
   ```bash
-  export NAMESPACE=llm-d-pd # or any other namespace (shorter names recommended)
-  kubectl create namespace ${NAMESPACE}
+    export branch="main" # branch, tag, or commit hash
+    git clone https://github.com/llm-d/llm-d.git && cd llm-d && git checkout ${branch}
+  ```
+- Set the following environment variables:
+  ```bash
+    export GAIE_VERSION=v1.4.0
+    export GUIDE_NAME="pd-disaggregation"
+    export MODEL_NAME="openai/gpt-oss-120b"
+  ```
+- Install the Gateway API Inference Extension CRDs:
+
+  ```bash
+    kubectl apply -k "https://github.com/kubernetes-sigs/gateway-api-inference-extension/config/crd?ref=${GAIE_VERSION}"
   ```
 
-* [Create the `llm-d-hf-token` secret in your target namespace with the key `HF_TOKEN` matching a valid HuggingFace token](../../helpers/hf-token.md) to pull models.
+## Installation Instructions
 
-## Installation
+### 1. Deploy the Inference Scheduler
 
-Use the helmfile to compose and install the stack. The Namespace in which the stack will be deployed will be derived from the `${NAMESPACE}` environment variable. If you have not set this, it will default to `llm-d-pd` in this example.
+#### Standalone Mode
 
-### Deploy
-
-```bash
-cd guides/pd-disaggregation
-helmfile apply -n ${NAMESPACE}
-```
-**For Intel HPU deployments**, use the HPU-specific environment:
+This deploys the inference scheduler with an Envoy sidecar, it doesn't set up a Kubernetes Gateway.
 
 ```bash
-export NAMESPACE=llm-d-pd
-cd guides/pd-disaggregation
-helmfile apply -e hpu -n ${NAMESPACE}
+helm install ${GUIDE_NAME} \
+    oci://registry.k8s.io/gateway-api-inference-extension/charts/standalone \
+    -f guides/recipes/scheduler/base.values.yaml \
+    -f guides/${GUIDE_NAME}/scheduler/${GUIDE_NAME}.values.yaml \
+    --version v1.4.0
 ```
 
-**_NOTE:_** You can set the `$RELEASE_NAME_POSTFIX` env variable to change the release names. This is how we support concurrent installs. Ex: `RELEASE_NAME_POSTFIX=pd-2 helmfile apply -n ${NAMESPACE}`
+<details>
+<summary><h4>Gateway Mode</h4></summary>
 
-**_NOTE:_** This uses Istio as the default provider, see [Gateway Options](./README.md#gateway-options) for installing with a specific provider.
+To employ a Kubernetes Gateway managed proxy instead of the standalone one, then instead of applying the standalone helm chart above, do the following:
 
-### Gateway options
-
-To see specify your gateway choice you can use the `-e <gateway option>` flag, ex:
+1. *Deploy a Kubernetes Gateway*. Follow [the gateway guides](../prereq/gateways) for step by step deployment for a Gateway named `llm-d-inference-gateway`. You only need to create one Gateway for your cluster, all guides can share one Gateway each with a separate HTTPRoute. 
+2. *Deploy the Inference Scheduler and HTTPRoute*. The following deploys the inference scheduler with an HttpRoute that connects it to the Gateway created in the previous step (set `provider.name` to the gateway provider you deployed):
 
 ```bash
-helmfile apply -e agentgateway -n ${NAMESPACE} # preferred agentgateway path
-helmfile apply -e kgateway -n ${NAMESPACE}     # deprecated migration path
+export PROVIDER_NAME=gke # other na, agentgateway or istio
+helm install ${GUIDE_NAME} \
+    oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool  \
+    -f guides/recipes/scheduler/base.values.yaml \
+    -f guides/${GUIDE_NAME}/scheduler/${GUIDE_NAME}.values.yaml \
+    --set provider.name=${PROVIDER_NAME} \
+    --set experimentalHttpRoute.enabled=true \
+    --set experimentalHttpRoute.inferenceGatewayName=llm-d-inference-gateway \
+    --set experimentalHttpRoute.baseModel=${GUIDE_NAME} \
+    --version v1.4.0
 ```
 
-**_WARNING:_** `kgateway` is deprecated in llm-d and will be removed in the next release. Prefer `agentgateway` for new self-installed inference deployments.
+</details>
 
-To see what gateway options are supported refer to our [gateway provider prereq doc](../prereq/gateway-provider/README.md#supported-providers). Gateway configurations per provider are tracked in the [gateway-configurations directory](../prereq/gateway-provider/common-configurations/).
+### 2. Deploy the Model Server
 
-You can also customize your gateway, for more information on how to do that see our [gateway customization docs](../04_customizing_a_guide.md).
+Apply the Kustomize overlays for your specific backend (defaulting to NVIDIA GPU / vLLM):
 
-#### Infrastructure provider specifics
-
-This guide uses RDMA via InfiniBand or RoCE for disaggregated serving kv-cache transfer. The resource attributes required to configure accelerator networking are not yet standardized via [Kubernetes Dynamic Resource Allocation](https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/) and so are parameterized per infra provider in the Helm charts. If your provider has a custom setting you will need to update the charts before deploying.
-
-##### OCI (Oracle Cloud Infrastructure)
-
-For OCI deployments, use `-e oci_amd` which configures SR-IOV RDMA networking and OCI-specific UCX transport variables:
+> [!NOTE]
+> The Kuberentes ecosystem has not yet standardized on how to expose
+> NICs to pods. So we provide some pre-configured setups for certain
+> Kuberentes providers.
 
 ```bash
-helmfile apply -e oci_amd -n ${NAMESPACE}
+export INFRA_PROVIDER=base
+
+kubectl apply -k guides/${GUIDE_NAME}/modelserver/gpu/vllm/${INFRA_PROVIDER}
 ```
 
-An OKE Cluster with RDMA networking must be deployed prior to launching llm-d on OCI. Refer to [the oci-hpc-oke stack](https://github.com/oracle-quickstart/oci-hpc-oke) for deployment.
+### 3. Enable monitoring (optional)
 
-**_NOTE:_** The `NetworkAttachmentDefinition` name (`sriov-rdma-vf`) and `nvidia.com/sriov-rdma-vf` resource label in `ms-pd/values_oci_amd.yaml` must match your cluster's SR-IOV device plugin configuration.
+> [!NOTE]
+> GKE provides [automatic application monitoring](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/configure-automatic-application-monitoring) out of the box. The llm-d [Monitoring stack](../../docs/monitoring/README.md) is not required for GKE, but it is available if you prefer to use it.
 
-**Common gotchas:**
-* If you change tensor parallelism, update both `podAnnotations` VF count and `nvidia.com/sriov-rdma-vf` resource requests to match
-* Wrong `UCX_IB_GID_INDEX` causes silent fallback to TCP — set `UCX_PROTO_INFO=y` to verify RDMA is selected
-* `IPC_LOCK` capability is required for RDMA pinned memory; without it NIXL transfers will fail
-
-### Install HTTPRoute
-
-Follow provider specific instructions for installing HTTPRoute.
-
-#### Install for "agentgateway", "kgateway" (deprecated), or "istio"
+- Install the [Monitoring stack](../../docs/monitoring/README.md).
+- Deploy the monitoring resources for this guide.
 
 ```bash
-kubectl apply -f httproute.yaml -n ${NAMESPACE}
+kubectl apply -k guides/recipes/modelserver/components/monitoring
 ```
 
-#### Install for "gke"
+## Verification
+
+### 1. Get the IP of the Scheduler
+
+**Standalone Mode**
 
 ```bash
-kubectl apply -f httproute.gke.yaml -n ${NAMESPACE}
+export IP=$(kubectl get service ${GUIDE_NAME}-epp -o jsonpath='{.spec.clusterIP}')
 ```
 
-## Verify the Installation
-
-* Firstly, you should be able to list all helm releases to view the 3 charts got installed into your chosen namespace:
+<details>
+<summary> <b>Gateway Mode</b> </summary>
 
 ```bash
-helm list -n ${NAMESPACE}
-NAME        NAMESPACE   REVISION    UPDATED                                 STATUS      CHART                       APP VERSION
-gaie-pd     llm-d-pd    1           2025-08-24 12:54:51.231537 -0700 PDT    deployed    inferencepool-v1.4.0        v1.4.0
-infra-pd    llm-d-pd    1           2025-08-24 12:54:46.983361 -0700 PDT    deployed    llm-d-infra-v1.4.0          v0.4.0
-ms-pd       llm-d-pd    1           2025-08-24 12:54:56.736873 -0700 PDT    deployed    llm-d-modelservice-v0.4.9   v0.4.0
+export IP=$(kubectl get gateway llm-d-inference-gateway -o jsonpath='{.status.addresses[0].value}')
 ```
+</details>
 
-* Out of the box with this example you should have the following resources:
+### 2. Send Test Requests
+
+**Open a temporary interactive shell inside the cluster:**
 
 ```bash
-kubectl get all -n ${NAMESPACE}
-NAME                                                    READY   STATUS    RESTARTS   AGE
-pod/gaie-pd-epp-54444ddc66-qv6ds                        1/1     Running   0          2m35s
-pod/infra-pd-inference-gateway-istio-56d66db57f-zwtzn   1/1     Running   0          2m41s
-pod/ms-pd-llm-d-modelservice-decode-84bf6d5bdd-jzfjn    2/2     Running   0          2m30s
-pod/ms-pd-llm-d-modelservice-prefill-86f6fb7cdc-8kfb8   1/1     Running   0          2m30s
-pod/ms-pd-llm-d-modelservice-prefill-86f6fb7cdc-g6wmp   1/1     Running   0          2m30s
-pod/ms-pd-llm-d-modelservice-prefill-86f6fb7cdc-jx2w2   1/1     Running   0          2m30s
-pod/ms-pd-llm-d-modelservice-prefill-86f6fb7cdc-vzcb8   1/1     Running   0          2m30s
-
-NAME                                       TYPE           CLUSTER-IP    EXTERNAL-IP   PORT(S)                        AGE
-service/gaie-pd-epp                        ClusterIP      10.16.0.255   <none>        9002/TCP,9090/TCP              2m35s
-service/gaie-pd-ip-bb618139                ClusterIP      None          <none>        54321/TCP                      2m35s
-service/infra-pd-inference-gateway-istio   ClusterIP      10.16.3.74    10.16.4.3     15021:31707/TCP,80:34096/TCP   2m41s
-
-NAME                                               READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/gaie-pd-epp                        1/1     1            1           2m36s
-deployment.apps/infra-pd-inference-gateway-istio   1/1     1            1           2m42s
-deployment.apps/ms-pd-llm-d-modelservice-decode    1/1     1            1           2m31s
-deployment.apps/ms-pd-llm-d-modelservice-prefill   4/4     4            4           2m31s
-
-NAME                                                          DESIRED   CURRENT   READY   AGE
-replicaset.apps/gaie-pd-epp-54444ddc66                        1         1         1       2m36s
-replicaset.apps/infra-pd-inference-gateway-istio-56d66db57f   1         1         1       2m42s
-replicaset.apps/ms-pd-llm-d-modelservice-decode-84bf6d5bdd    1         1         1       2m31s
-replicaset.apps/ms-pd-llm-d-modelservice-prefill-86f6fb7cdc   4         4         4       2m31s
+kubectl run curl-debug --rm -it \
+    --image=cfmanteiga/alpine-bash-curl-jq \
+    --env="IP=$IP" \
+    --env="GUIDE_NAME=$GUIDE_NAME" \
+    -- /bin/bash
 ```
 
-**_NOTE:_** This assumes no other guide deployments in your given `${NAMESPACE}` and you have not changed the default release names via the `${RELEASE_NAME}` environment variable.
-
-## Using the stack
-
-For instructions on getting started making inference requests see [our docs](../02_verifying_a_guide.md)
-
-## Tuning Selective PD
-
-Selective PD is a feature in the `inference-scheduler` within the context of prefill-decode disaggregation, although it is disabled by default. This feature enables routing to just decode even with the P/D deployed. To enable it, you will need to set `threshold` value for the `pd-profile-handler` plugin, in the [GAIE values file](./gaie-pd/values.yaml). You can see the value of this here:
+**Send a completion request:**
 
 ```bash
-cat gaie-pd/values.yaml | yq '.inferenceExtension.pluginsCustomConfig."pd-config.yaml"' | yq '.plugins[] | select(.type == "pd-profile-handler")'
-type: pd-profile-handler
-parameters:
-  threshold: 0 # update this
-  hashBlockSize: 5
+curl -X POST http://${IP}/v1/completions \
+    -H 'Content-Type: application/json' \
+    -H 'X-Gateway-Base-Model-Name: '"$GUIDE_NAME"'' \
+    -d '{
+        "model": '\"${MODEL_NAME}\"',
+        "prompt": "How are you today?"
+    }' | jq
 ```
-
-Some examples in which you might want to do selective PD might include:
-
-* When the prompt is short enough that the amount of work split inference into prefill and decode phases, and then open a kv transfer between those two GPUs is greater than the amount of work to do both phases on the same decode inference worker.
-* When Prefill units are at full capacity.
-
-For information on this plugin, see our [`pd-profile-handler` docs in the inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler/blob/v0.7.0/docs/architecture.md?plain=1#L205-L210)
 
 ## Benchmarking
-
-### Overview
-The primary objective of this benchmark is to validate the correctness of the P/D disaggregation setup.
-
-In this example, we deployed the user guide on GKE using the modified [Gateway options](./README.md#gateway-options) described above:
-
-```bash
-helmfile apply -e gke_pd_rdma -n ${NAMESPACE}
-```
-This setup serves the `openai/gpt-oss-120b` model using the following specifications:
-
-* Provider: GKE
-* Prefill: 1 instance with TP=8
-* Decode: 1 instance with TP=8
-* 2 `a3-ultragpu-8g` VMs, 16 GPUs
-
-### Verify the correctness
-
-```sh
-kubectl get pods -n $NAMESPACE
-NAME                                                READY   STATUS    RESTARTS   AGE
-gaie-pd-epp-764f94bb6f-dz9nr                        1/1     Running   0          40m
-ms-pd-llm-d-modelservice-decode-cc87cf9dc-bf8g7     2/2     Running   0          40m
-ms-pd-llm-d-modelservice-prefill-69444f978b-xlcll   1/1     Running   0          40m
-```
-
-Ensure that vLLM debug logging is enabled. Submit the following request to your endpoint:
-
-```sh
-curl -i http://<your_endpoint>/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "openai/gpt-oss-120b",
-    "messages": [
-      {
-        "role": "user",
-        "content": "<your prompt>"
-      }
-    ]
-  }'
-```
-
-Expected Results:
-
-On the prefill node, you should see the following log entry:
-
-```
-(APIServer pid=1) (EngineCore_DP0 pid=322) DEBUG 01-31 07:12:26 [distributed/.../v1/nixl_connector.py:725] NIXLConnector request_finished(chatcmpl-51b9a341-ca93-43f7-92fc-98b51f41d7e7), request_status=FINISHED_LENGTH_CAPPED, kv_transfer_params={'do_remote_decode': True, 'do_remote_prefill': False, 'remote_block_ids': None, 'remote_engine_id': None, 'remote_host': None, 'remote_port': None}
-```
-
-On the decode node, you should see the corresponding completion entry:
-
-```
-(APIServer pid=1) (EngineCore_DP0 pid=322) DEBUG 01-31 07:12:26 [distributed/.../v1/nixl_connector.py:725] NIXLConnector request_finished(chatcmpl-51b9a341-ca93-43f7-92fc-98b51f41d7e7), request_status=FINISHED_STOPPED, kv_transfer_params={'do_remote_decode': False, 'do_remote_prefill': False, 'remote_block_ids': [2, 3], 'remote_engine_id': '7520acd6-838a-4c0b-af97-a06e18a4f1c4', 'remote_host': '10.116.24.5', 'remote
-```
-
 
 ### Run Benchmark
 
@@ -465,39 +358,3 @@ export BENCHMARK_TEMPLATE="${BENCH_TEMPLATE_DIR}"/guide.yaml
 
 </details>
 
-
-## Cleanup
-
-To remove the deployment:
-
-```bash
-# Remove the model services
-helmfile destroy -n ${NAMESPACE}
-
-# Remove the infrastructure
-helm uninstall ms-pd -n ${NAMESPACE}
-helm uninstall gaie-pd -n ${NAMESPACE}
-helm uninstall infra-pd -n ${NAMESPACE}
-```
-
-**_NOTE:_** If you set the `$RELEASE_NAME_POSTFIX` environment variable, your release names will be different from the command above: `infra-$RELEASE_NAME_POSTFIX`, `gaie-$RELEASE_NAME_POSTFIX` and `ms-$RELEASE_NAME_POSTFIX`.
-
-### Cleanup HTTPRoute
-
-Follow provider specific instructions for deleting HTTPRoute.
-
-#### Cleanup for "agentgateway", "kgateway" (deprecated), or "istio"
-
-```bash
-kubectl delete -f httproute.yaml -n ${NAMESPACE}
-```
-
-#### Cleanup for "gke"
-
-```bash
-kubectl delete -f httproute.gke.yaml -n ${NAMESPACE}
-```
-
-## Customization
-
-For information on customizing a guide and tips to build your own, see [our docs](../04_customizing_a_guide.md)
