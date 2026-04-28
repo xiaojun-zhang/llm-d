@@ -124,7 +124,7 @@ prefill:
       interval: "30s"
   containers:
   - name: "sglang"
-    image: docker.io/lmsysorg/sglang:v0.5.6.post2
+    image: docker.io/lmsysorg/sglang:v0.5.8.post1-cu130
     command: ["python3", "-m", "sglang.launch_server"]
     args:
       - "--model-path"
