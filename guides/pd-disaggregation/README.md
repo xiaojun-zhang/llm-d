@@ -198,10 +198,29 @@ curl -LJO "https://raw.githubusercontent.com/llm-d/llm-d/main/guides/pd-disaggre
 ### 3. Execute Benchmark
 
 ```bash
-export IP=$(kubectl get service ${GUIDE_NAME}-epp -o jsonpath='{.spec.clusterIP}')
+export IP_ADDR=$(kubectl get service ${GUIDE_NAME}-epp -o jsonpath='{.spec.clusterIP}')
 envsubst < guide.yaml > config.yaml
 ./run_only.sh -c config.yaml -o ./results
 ```
+
+<details>
+<summary><h4>Run Baseline (Aggregated)</h4></summary>
+
+- Deploy (16 replicas of TP=1, with a standard k8s service)
+```bash
+kubectl apply -f guides/pd-disaggregation/baseline/manifest.yaml
+```
+
+- Benchmark (using the same as above)
+
+```bash
+export STACK_NAME=baseline
+export IP_ADDR=$(kubectl get service baseline -o jsonpath='{.spec.clusterIP}')
+envsubst < guide.yaml > config-baseline.yaml
+./run_only.sh -c config-baseline.yaml -o ./results
+```
+
+</details>
 
 ## Cleanup
 
