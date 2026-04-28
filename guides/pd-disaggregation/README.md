@@ -1,6 +1,6 @@
 # P/D Disaggregation
 
-[![Nightly - PD Disaggregation E2E (OpenShift)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-ocp.yaml/badge.svg)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-ocp.yaml) [![Nightly - PD Disaggregation E2E (CKS)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-cks.yaml/badge.svg)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-cks.yaml) [![Nightly - PD Disaggregation E2E (GKE)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-gke.yaml/badge.svg)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-gke.yaml)
+[![Nightly - PD Disaggregation E2E (CKS)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-cks.yaml/badge.svg)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-cks.yaml) [![Nightly - PD Disaggregation E2E (GKE)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-gke.yaml/badge.svg)](https://github.com/llm-d/llm-d/actions/workflows/nightly-e2e-pd-disaggregation-gke.yaml)
 
 ## Overview
 
@@ -58,13 +58,17 @@ This guide includes configuration for the following accelerators:
   ```bash
     export GAIE_VERSION=v1.4.0
     export GUIDE_NAME="pd-disaggregation"
-    export MODEL_NAME="openai/gpt-oss-120b"
     export NAMESPACE="llm-d-pd-disaggregation"
+    export MODEL_NAME="openai/gpt-oss-120b"
   ```
 - Install the Gateway API Inference Extension CRDs:
 
   ```bash
     kubectl apply -k "https://github.com/kubernetes-sigs/gateway-api-inference-extension/config/crd?ref=${GAIE_VERSION}"
+  ```
+- Create a target namespace for the installation
+  ```bash
+      kubectl create namespace ${NAMESPACE}
   ```
 
 ## Installation Instructions
@@ -80,8 +84,7 @@ helm install ${GUIDE_NAME} \
     oci://registry.k8s.io/gateway-api-inference-extension/charts/standalone \
     -f guides/recipes/scheduler/base.values.yaml \
     -f guides/${GUIDE_NAME}/scheduler/${GUIDE_NAME}.values.yaml \
-    --version ${GAIE_VERSION} \
-    -n ${NAMESPACE}
+    -n ${NAMESPACE} --version ${GAIE_VERSION}
 ```
 
 <details>
@@ -102,8 +105,7 @@ helm install ${GUIDE_NAME} \
     --set experimentalHttpRoute.enabled=true \
     --set experimentalHttpRoute.inferenceGatewayName=llm-d-inference-gateway \
     --set experimentalHttpRoute.baseModel=${GUIDE_NAME} \
-    --version ${GAIE_VERSION} \
-    -n ${NAMESPACE}
+    -n ${NAMESPACE} --version ${GAIE_VERSION}
 ```
 
 </details>
@@ -121,7 +123,7 @@ Apply the Kustomize overlays for your specific backend (defaulting to NVIDIA GPU
 ```bash
 export INFRA_PROVIDER=base # coreweave, gke
 
-kubectl apply -k guides/${GUIDE_NAME}/modelserver/gpu/vllm/${INFRA_PROVIDER}
+kubectl apply -n ${NAMESPACE} -k guides/${GUIDE_NAME}/modelserver/gpu/vllm/${INFRA_PROVIDER}
 ```
 
 ### 3. Enable Monitoring (optional)
@@ -143,43 +145,43 @@ kubectl apply -n ${NAMESPACE} -k guides/recipes/modelserver/components/monitorin
 **Standalone Mode**
 
 ```bash
-export IP_ADDR=$(kubectl get service -n ${NAMESPACE} ${GUIDE_NAME}-epp -o jsonpath='{.spec.clusterIP}')
+export IP=$(kubectl get service ${GUIDE_NAME}-epp -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
 ```
 
 <details>
 <summary> <b>Gateway Mode</b> </summary>
 
 ```bash
-export IP_ADDR=$(kubectl get gateway llm-d-inference-gateway -n ${NAMESPACE} -o jsonpath='{.status.addresses[0].value}')
+export IP=$(kubectl get gateway llm-d-inference-gateway -n ${NAMESPACE} -o jsonpath='{.status.addresses[0].value}')
 ```
 </details>
 
-### 2. Send Test Request
+### 2. Send Test Requests
 
 **Open a temporary interactive shell inside the cluster:**
 
 ```bash
 kubectl run curl-debug --rm -it \
     --image=cfmanteiga/alpine-bash-curl-jq \
-    --env="IP_ADDR=$IP_ADDR" \
-    --env="GUIDE_NAME=$GUIDE_NAME" \
-    --env="MODEL_NAME=$MODEL_NAME" \
-    -n ${NAMESPACE} \
+    --env="IP=$IP" \
+    --env="NAMESPACE=$NAMESPACE" \
     -- /bin/bash
 ```
 
 **Send a completion request:**
 
 ```bash
-curl -X POST http://${IP_ADDR}:8081/v1/completions \
+curl -X POST http://${IP}/v1/completions \
     -H 'Content-Type: application/json' \
     -d '{
-        "model": '\"${MODEL_NAME}\"',
+        "model": "Qwen/Qwen3-32B",
         "prompt": "How are you today?"
     }' | jq
 ```
 
-The benchmark launches a pod (`llmdbench-harness-launcher`) that, in this case, uses `inference-perf` with a shared prefix synthetic workload named `shared_prefix_synthetic`. This workload runs several stages with different rates. The results will be saved to a local folder by using the `-o` flag of `run_only.sh`. Each experiment is saved under the specified output folder, e.g., `./results/<experiment ID>/inference-perf_<experiment ID>_shared_prefix_synthetic_optimized-baseline_<model name>` folder
+## Benchmarking
+
+The benchmark launches a pod (`llmdbench-harness-launcher`) that, in this case, uses `inference-perf` with a synthetic workload named `shared_prefix_synthetic`. This workload runs several stages with different rates. The results will be saved to a local folder by using the `-o` flag of `run_only.sh`. Each experiment is saved under the specified output folder, e.g., `./results/<experiment ID>/inference-perf_<experiment ID>_shared_prefix_synthetic_optimized-baseline_<model name>` folder
 
 For more details, refer to the [benchmark instructions doc](../../helpers/benchmark.md).
 
@@ -203,18 +205,32 @@ curl -LJO "https://raw.githubusercontent.com/llm-d/llm-d/main/guides/pd-disaggre
 ### 3. Execute Benchmark
 
 ```bash
-export IP_ADDR=$(kubectl get service -n ${NAMESPACE} ${GUIDE_NAME}-epp -o jsonpath='{.spec.clusterIP}')
-envsubst < guide.yaml > config.yaml
+export IP=$(kubectl get service ${GUIDE_NAME}-epp  -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+```
+
+<details>
+<summary> <b>Click here for Gateway Mode</b> </summary>
+
+```bash
+export IP=$(kubectl get gateway llm-d-inference-gateway  -n ${NAMESPACE} -o jsonpath='{.status.addresses[0].value}')
+```
+</details>
+
+
+```bash
+export NAMESPACE=default
+envsubst < 20_1_isl_osl.yaml > config.yaml
 ./run_only.sh -c config.yaml -o ./results
 ```
+
 
 ## Cleanup
 
 To remove the deployed components:
 
 ```bash
-helm uninstall optimized-baseline -n ${NAMESPACE}
-kubectl delete -n ${NAMESPACE} -k guides/optimized-baseline/modelserver/gpu/vllm/
+helm uninstall ${GUIDE_NAME} -n ${NAMESPACE}
+kubectl delete -n ${NAMESPACE} -k guides/optimized-baseline/modelserver/gpu/vllm/${INFRA_PROVIDER}
 ```
 
 ## Comparing llm-d P/D disaggregation to a k8s service
