@@ -204,7 +204,6 @@ export IP=$(kubectl get gateway llm-d-inference-gateway  -n ${NAMESPACE} -o json
 </details>
 
 ```bash
-export NAMESPACE=default
 envsubst < shared_prefix.yaml > config.yaml
 ./run_only.sh -c config.yaml -o ./results
 ```

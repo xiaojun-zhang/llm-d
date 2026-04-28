@@ -54,6 +54,8 @@ The **Data Layer** operates asynchronously, consuming and storing data from a va
 
 Other modules in the EPP consult the **Data Layer** during request processing.
 
+See [Data Layer](datalayer.md) for more details on the design.
+
 #### Request Handler (Extensible)
 
 The **Request Handler** is the first step of the request flow in the EPP. The key responsibility is to convert the user's request into the internal EPP data structure via the Parser plugin. The EPP provides out-of-the-box Parsers for common formats like the [OpenAI HTTP](https://developers.openai.com/api/reference/overview) and [vLLM gRPC](https://docs.vllm.ai/en/latest/api/vllm/entrypoints/grpc_server/).
