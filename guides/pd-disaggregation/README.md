@@ -203,6 +203,19 @@ envsubst < guide.yaml > config.yaml
 ./run_only.sh -c config.yaml -o ./results
 ```
 
+## Cleanup
+
+To remove the deployed components:
+
+```bash
+helm uninstall optimized-baseline -n ${NAMESPACE}
+kubectl delete -n ${NAMESPACE} -k guides/optimized-baseline/modelserver/gpu/vllm/
+```
+
+## Compatin llm-d P/D disaggregation to a K8s Service
+
+The following scripts run the same benchmark against a standard deployment and service running `openai/gpt-oss-120b`.
+
 <details>
 <summary><h4>Run Baseline (Aggregated)</h4></summary>
 
@@ -222,11 +235,18 @@ envsubst < guide.yaml > config-baseline.yaml
 
 </details>
 
-## Cleanup
+The following data captures the performance of the last stage conducted at a fixed request rate of **60**. We also compare the result with k8s service.
 
-To remove the deployed components:
+- **Throughput**: Requests/sec **+151.5%**; Total tokens/sec **+151.7%**
+- **Latency**: TTFT (mean) **-99.66%**; E2E request latency (mean) **-35.6%**
+- **Per-token speed**: Inter-token latency (mean) **-3.9%**
 
-```bash
-helm uninstall optimized-baseline -n ${NAMESPACE}
-kubectl delete -n ${NAMESPACE} -k guides/optimized-baseline/modelserver/gpu/vllm/
-```
+| Metric                   | k8s (Mean) | llm-d (Mean) | Δ (llm-d - k8s) | Δ% vs k8s |
+| :----------------------- | :--------- | :----------- | :-------------- | :-------- |
+| Requests/sec             | 5.7306     | 14.4123      | +8.6817         | +151.5%   |
+| Input tokens/sec         | 43,417.86  | 109,192.83   | +65,774.97      | +151.5%   |
+| Output tokens/sec        | 5,362.16   | 13,574.37    | +8,212.21       | +153.2%   |
+| Total tokens/sec         | 48,780.02  | 122,767.19   | +73,987.17      | +151.7%   |
+| Request latency (s)      | 105.4133   | 67.8649      | -37.5484        | -35.6%    |
+| TTFT (s)                 | 34.9145    | 0.1203       | -34.7942        | -99.66%   |
+| Inter-token latency (ms) | 70.42      | 67.66        | -2.76           | -3.9%     |

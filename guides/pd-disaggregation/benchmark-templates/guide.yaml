@@ -16,7 +16,7 @@ harness:
   results_pvc: ${BENCHMARK_PVC}   # PVC where benchmark results are stored
   namespace: *namespace           # Namespace where harness is deployed. Typically with stack.
   parallelism: 1                  # Number of parallel workload launcher pods to create.
-  wait_timeout: 600               # Time (in seconds) to wait for workload launcher pod to complete before terminating.
+  wait_timeout: 6000              # Time (in seconds) to wait for workload launcher pod to complete before terminating.
                                   # Set to 0 to disable timeout.
   image: ghcr.io/llm-d/llm-d-benchmark:v0.5.2
   # dataset_url: &dataset_url none
@@ -46,14 +46,6 @@ workload:                         # yaml configuration for harness workload(s)
         duration: 120
         num_requests: null
         concurrency_level: null
-      - rate: 45.
-        duration: 120
-        num_requests: null
-        concurrency_level: null
-      - rate: 55.
-        duration: 120
-        num_requests: null
-        concurrency_level: null
       num_workers: 45
       worker_max_concurrency: 10
     api:
@@ -69,14 +61,14 @@ workload:                         # yaml configuration for harness workload(s)
     data:
       type: random
       input_distribution:
-        min: 8000
-        max: 8000
-        mean: 8000
+        min: 10000
+        max: 10000
+        mean: 10000
         std_dev: 0
       output_distribution:
-        min: 1000
-        max: 1000
-        mean: 1000
+        min: 500
+        max: 500
+        mean: 500
         std_dev: 0
     report:
       request_lifecycle:
