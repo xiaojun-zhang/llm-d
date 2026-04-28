@@ -18,7 +18,6 @@ spec:
             - "--tensor-parallel-size=1"
             - "--log-level=info"
             - "--enable-metrics"
-            - "--log-requests"
           env:
             - name: VLLM_NIXL_SIDE_CHANNEL_HOST
               valueFrom:

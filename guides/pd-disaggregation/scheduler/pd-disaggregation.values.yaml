@@ -16,13 +16,10 @@ inferenceExtension:
       - prepareDataPlugins
       plugins:
       - type: disagg-headers-handler
-      - type: prefix-based-pd-decider
-        parameters:
-          nonCachedTokens: 1
+      - type: always-disagg-pd-decider
       - type: disagg-profile-handler
         parameters:
-          deciders:
-            prefill: prefix-based-pd-decider
+          deciderPluginName: always-disagg-pd-decider
       - type: prefill-filter
       - type: decode-filter
       - type: prefix-cache-scorer
@@ -68,7 +65,6 @@ inferenceExtension:
 inferencePool:
   targetPorts:
     - number: 8000
-  modelServerType: vllm
   modelServers:
     matchLabels:
       llm-d.ai/guide: "pd-disaggregation"
