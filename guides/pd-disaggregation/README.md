@@ -140,14 +140,14 @@ kubectl apply -k guides/recipes/modelserver/components/monitoring-pd
 **Standalone Mode**
 
 ```bash
-export IP=$(kubectl get service ${GUIDE_NAME}-epp -o jsonpath='{.spec.clusterIP}')
+export IP_ADDR=$(kubectl get service ${GUIDE_NAME}-epp -o jsonpath='{.spec.clusterIP}')
 ```
 
 <details>
 <summary> <b>Gateway Mode</b> </summary>
 
 ```bash
-export IP=$(kubectl get gateway llm-d-inference-gateway -o jsonpath='{.status.addresses[0].value}')
+export IP_ADDR=$(kubectl get gateway llm-d-inference-gateway -o jsonpath='{.status.addresses[0].value}')
 ```
 </details>
 
@@ -158,15 +158,16 @@ export IP=$(kubectl get gateway llm-d-inference-gateway -o jsonpath='{.status.ad
 ```bash
 kubectl run curl-debug --rm -it \
     --image=cfmanteiga/alpine-bash-curl-jq \
-    --env="IP=$IP" \
+    --env="IP_ADDR=$IP_ADDR" \
     --env="GUIDE_NAME=$GUIDE_NAME" \
+    --env="MODEL_NAME=$MODEL_NAME" \
     -- /bin/bash
 ```
 
 **Send a completion request:**
 
 ```bash
-curl -X POST http://${IP}:8081/v1/completions \
+curl -X POST http://${IP_ADDR}:8081/v1/completions \
     -H 'Content-Type: application/json' \
     -H 'X-Gateway-Base-Model-Name: '"$GUIDE_NAME"'' \
     -d '{
