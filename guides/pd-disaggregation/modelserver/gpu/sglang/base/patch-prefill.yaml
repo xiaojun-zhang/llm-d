@@ -18,15 +18,7 @@ spec:
             - "--tensor-parallel-size=1"
             - "--log-level=info"
             - "--enable-metrics"
-          env:
-            - name: VLLM_NIXL_SIDE_CHANNEL_HOST
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-          ports:
-            - containerPort: 8200
-              name: sglang
-              protocol: TCP
+            - "--uvicorn-access-log-exclude-prefixes=/metrics"
           resources:
             limits:
               cpu: "8"
@@ -42,24 +34,15 @@ spec:
             - name: metrics-volume
               mountPath: /.config
           startupProbe:
-            httpGet:
-              path: /health
-              port: sglang
             initialDelaySeconds: 15
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 120
           livenessProbe:
-            httpGet:
-              path: /health
-              port: sglang
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
-            httpGet:
-              path: /v1/models
-              port: sglang
             periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 3
