@@ -13,7 +13,6 @@ modelArtifacts:
     llm-d.ai/accelerator-variant: "gpu"
     llm-d.ai/accelerator-vendor: "nvidia"
     llm-d.ai/model: "Qwen3-32B"
-
 routing:
   servicePort: 8000
   proxy:

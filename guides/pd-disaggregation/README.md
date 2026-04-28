@@ -59,6 +59,7 @@ This guide includes configuration for the following accelerators:
     export GAIE_VERSION=v1.4.0
     export GUIDE_NAME="pd-disaggregation"
     export MODEL_NAME="openai/gpt-oss-120b"
+    export NAMESPACE="llm-d-pd-disaggregation"
   ```
 - Install the Gateway API Inference Extension CRDs:
 
@@ -79,7 +80,8 @@ helm install ${GUIDE_NAME} \
     oci://registry.k8s.io/gateway-api-inference-extension/charts/standalone \
     -f guides/recipes/scheduler/base.values.yaml \
     -f guides/${GUIDE_NAME}/scheduler/${GUIDE_NAME}.values.yaml \
-    --version ${GAIE_VERSION}
+    --version ${GAIE_VERSION} \
+    -n ${NAMESPACE}
 ```
 
 <details>
@@ -100,7 +102,8 @@ helm install ${GUIDE_NAME} \
     --set experimentalHttpRoute.enabled=true \
     --set experimentalHttpRoute.inferenceGatewayName=llm-d-inference-gateway \
     --set experimentalHttpRoute.baseModel=${GUIDE_NAME} \
-    --version ${GAIE_VERSION}
+    --version ${GAIE_VERSION} \
+    -n ${NAMESPACE}
 ```
 
 </details>
@@ -130,7 +133,7 @@ kubectl apply -k guides/${GUIDE_NAME}/modelserver/gpu/vllm/${INFRA_PROVIDER}
 - Deploy the monitoring resources for this guide.
 
 ```bash
-kubectl apply -k guides/recipes/modelserver/components/monitoring-pd
+kubectl apply -n ${NAMESPACE} -k guides/recipes/modelserver/components/monitoring-pd
 ```
 
 ## Verification
@@ -140,14 +143,14 @@ kubectl apply -k guides/recipes/modelserver/components/monitoring-pd
 **Standalone Mode**
 
 ```bash
-export IP_ADDR=$(kubectl get service ${GUIDE_NAME}-epp -o jsonpath='{.spec.clusterIP}')
+export IP_ADDR=$(kubectl get service -n ${NAMESPACE} ${GUIDE_NAME}-epp -o jsonpath='{.spec.clusterIP}')
 ```
 
 <details>
 <summary> <b>Gateway Mode</b> </summary>
 
 ```bash
-export IP_ADDR=$(kubectl get gateway llm-d-inference-gateway -o jsonpath='{.status.addresses[0].value}')
+export IP_ADDR=$(kubectl get gateway llm-d-inference-gateway -n ${NAMESPACE} -o jsonpath='{.status.addresses[0].value}')
 ```
 </details>
 
@@ -161,6 +164,7 @@ kubectl run curl-debug --rm -it \
     --env="IP_ADDR=$IP_ADDR" \
     --env="GUIDE_NAME=$GUIDE_NAME" \
     --env="MODEL_NAME=$MODEL_NAME" \
+    -n ${NAMESPACE} \
     -- /bin/bash
 ```
 
@@ -200,7 +204,7 @@ curl -LJO "https://raw.githubusercontent.com/llm-d/llm-d/main/guides/pd-disaggre
 ### 3. Execute Benchmark
 
 ```bash
-export IP_ADDR=$(kubectl get service ${GUIDE_NAME}-epp -o jsonpath='{.spec.clusterIP}')
+export IP_ADDR=$(kubectl get service -n ${NAMESPACE} ${GUIDE_NAME}-epp -o jsonpath='{.spec.clusterIP}')
 envsubst < guide.yaml > config.yaml
 ./run_only.sh -c config.yaml -o ./results
 ```
@@ -214,7 +218,7 @@ helm uninstall optimized-baseline -n ${NAMESPACE}
 kubectl delete -n ${NAMESPACE} -k guides/optimized-baseline/modelserver/gpu/vllm/
 ```
 
-## Compatin llm-d P/D disaggregation to a k8s service
+## Comparing llm-d P/D disaggregation to a k8s service
 
 The following scripts run the same benchmark against a standard deployment and service running `openai/gpt-oss-120b`.
 
@@ -223,14 +227,14 @@ The following scripts run the same benchmark against a standard deployment and s
 
 - Deploy (16 replicas of TP=1, with a standard k8s service)
 ```bash
-kubectl apply -f guides/pd-disaggregation/baseline/manifest.yaml
+kubectl apply -n ${NAMESPACE} -f guides/pd-disaggregation/baseline/manifest.yaml
 ```
 
 - Benchmark (using the same as above)
 
 ```bash
 export STACK_NAME=baseline
-export IP_ADDR=$(kubectl get service baseline -o jsonpath='{.spec.clusterIP}')
+export IP_ADDR=$(kubectl get service baseline -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
 envsubst < guide.yaml > config-baseline.yaml
 ./run_only.sh -c config-baseline.yaml -o ./results-baseline
 ```
