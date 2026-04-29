@@ -29,7 +29,7 @@ Two scorers make up the routing decision alongside the load-aware stack:
 | -------------------- | -------------------------- | --------------------------------------- | ------------------------------------------ |
 | NVIDIA GPU           | `modelserver/gpu/vllm/`    | Qwen/Qwen3-32B                          | Default configuration                      |
 | AMD GPU              | `modelserver/amd/vllm/`    | Qwen/Qwen3-32B                          | AMD GPU                                    |
-| Intel XPU            | `modelserver/xpu/vllm/`    | Qwen/Qwen3-0.6B                         | CI-sized; ships a matching `scheduler/plugins/xpu.yaml` override (see Step 2) |
+| Intel XPU            | `modelserver/xpu/vllm/`    | Qwen/Qwen3-0.6B                         | CI-sized; update scheduler `modelName` for real use |
 | Intel Gaudi (HPU)    | `modelserver/hpu/vllm/`    | Qwen/Qwen3-8B                           | `--block-size=128`; update scorer `blockSize` to match |
 | Google TPU v6e       | `modelserver/tpu-v6/vllm/` | Llama-3.1-70B-Instruct                  | GKE TPU                                    |
 | Google TPU v7        | `modelserver/tpu-v7/vllm/` | Qwen3-Coder-480B-FP8                    | GKE TPU                                    |
@@ -87,25 +87,6 @@ helm install precise-prefix-cache-aware \
 ```
 
 The release name `precise-prefix-cache-aware` is mandatory for standard deployments. The vLLM patches hardcode the endpoint as `KV_EVENTS_ENDPOINT=tcp://<release>-epp.<ns>.svc.cluster.local:5556`. If you choose a custom release name, you must manually update the `KV_EVENTS_ENDPOINT` environment variable in your modelserver overlay to match `<your-release-name>-epp`.
-
-<details>
-<summary><b>Intel XPU — layer the matching plugins override</b></summary>
-
-The XPU overlay deploys Qwen/Qwen3-0.6B, which does not match the Qwen/Qwen3-32B defaults in `scheduler/precise-prefix-cache-aware.values.yaml`. Add `--set-file` on the helm command to load the shipped per-accelerator plugins file so the scorer's tokenizer matches what vLLM emits (silent score collapse to 0 otherwise):
-
-```bash
-helm install precise-prefix-cache-aware \
-  oci://registry.k8s.io/gateway-api-inference-extension/charts/standalone \
-  -f guides/recipes/scheduler/base.values.yaml \
-  -f guides/precise-prefix-cache-aware/scheduler/precise-prefix-cache-aware.values.yaml \
-  --set-file 'inferenceExtension.pluginsCustomConfig.precise-prefix-cache-aware-plugins\.yaml'=guides/precise-prefix-cache-aware/scheduler/plugins/xpu.yaml \
-  --post-renderer uds-tokenizer \
-  -n ${NAMESPACE} --version v1.4.0
-```
-
-The backslash-escaped dot on `precise-prefix-cache-aware-plugins\.yaml` is required — unescaped dots are nested map keys in helm `--set`.
-
-</details>
 
 <details>
 <summary><b>Why a helm post-renderer is required (chart limitation)</b></summary>
