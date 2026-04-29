@@ -44,8 +44,8 @@ jobs:
       pre_deploy_script: |
         echo "Applying pd-disaggregation slim transforms..."
         cd guides/pd-disaggregation/modelserver/gpu/vllm/base
-        yq e '.spec.replicas = "4"' -i patch-prefill.yaml
-        yq e '.spec.replicas = "1"' -i patch-decode.yaml
+        yq e '.spec.replicas = 4' -i patch-prefill.yaml
+        yq e '.spec.replicas = 1' -i patch-decode.yaml
         echo "Slim transform applied: 1x4 TP Decode, 4x1 TP Prefill"
         cd "$GITHUB_WORKSPACE"
       allow_gpu_preemption: true
