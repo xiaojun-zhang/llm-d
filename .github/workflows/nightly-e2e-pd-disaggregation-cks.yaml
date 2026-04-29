@@ -35,7 +35,6 @@ jobs:
           -f guides/recipes/scheduler/base.values.yaml \
           -f guides/pd-disaggregation/scheduler/pd-disaggregation.values.yaml \
           -n ${NAMESPACE} --version v1.4.0
-      accelerator_type: H100
       required_gpus: 8
       recommended_gpus: 8
       pod_wait_timeout: '30m'
