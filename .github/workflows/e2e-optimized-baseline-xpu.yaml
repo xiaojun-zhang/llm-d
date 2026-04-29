@@ -33,11 +33,9 @@ jobs:
     runs-on: xpu
     env:
       NAMESPACE: "llm-d-xpu-is"
-      GATEWAY_TYPE: "istio"
-      RELEASE_NAME_POSTFIX: "xpu"
-      INFRA_RELEASE_NAME: "infra-xpu"
-      GAIE_RELEASE_NAME: "gaie-xpu"
-      MS_RELEASE_NAME: "ms-xpu"
+      GAIE_VERSION: "v1.4.0"
+      GUIDE_NAME: "optimized-baseline"
+      SCHEDULER_RELEASE_NAME: "optimized-baseline"
 
     steps:
       - name: Checkout
@@ -78,11 +76,9 @@ jobs:
         run: |
           ./helpers/client-setup/install-deps.sh | tee ~/install-deps.log
 
-      - name: Install chart dependencies (CRDs and Istio)
+      - name: Install Gateway API Inference Extension CRDs
         run: |
-          cd guides/prereq/gateway-provider
-          ./install-gateway-provider-dependencies.sh
-          helmfile apply -f istio.helmfile.yaml
+          kubectl apply -k "https://github.com/kubernetes-sigs/gateway-api-inference-extension/config/crd?ref=${GAIE_VERSION}"
 
       - name: Install monitoring stack
         run: |
@@ -105,52 +101,45 @@ jobs:
         run: |
           CUSTOM_TAG="${{ inputs.custom_image_tag }}"
           if [ -n "${CUSTOM_TAG}" ]; then
-            # Check if it's a full image address (contains '/') or just a tag
+            # If input contains '/' it is a full image reference; otherwise treat as a tag
             if [[ "${CUSTOM_TAG}" == *"/"* ]]; then
-              echo "Using custom full image address: ${CUSTOM_TAG}"
-              FULL_IMAGE="${CUSTOM_TAG}"
+              echo "Using custom image reference: ${CUSTOM_TAG}"
+              echo "CUSTOM_IMAGE_REF=${CUSTOM_TAG}" >> $GITHUB_ENV
             else
               echo "Using custom image tag: ${CUSTOM_TAG}"
-              FULL_IMAGE="ghcr.io/${{ github.repository }}-xpu-dev:${CUSTOM_TAG}"
+              echo "CUSTOM_IMAGE_REF=ghcr.io/${{ github.repository }}-xpu-dev:${CUSTOM_TAG}" >> $GITHUB_ENV
             fi
-            echo "IMAGE_TAG=${CUSTOM_TAG}" >> $GITHUB_ENV
-            echo "HELM_SET_IMAGE=--set decode.containers[0].image=${FULL_IMAGE} --set decode.containers[0].imagePullPolicy=Always" >> $GITHUB_ENV
+            echo "HAS_CUSTOM_IMAGE=true" >> $GITHUB_ENV
           else
-            echo "Using default image tag from values file"
-            echo "HELM_SET_IMAGE=" >> $GITHUB_ENV
+            echo "Using default image from kustomization.yaml"
+            echo "HAS_CUSTOM_IMAGE=false" >> $GITHUB_ENV
           fi
 
-      - name: Deploy guide
+      - name: Deploy scheduler via helm (standalone)
         run: |
-          cd guides/optimized-baseline
-          helmfile apply -e xpu -n "${NAMESPACE}" ${HELM_SET_IMAGE} \
-            --skip-schema-validation \
-            | tee ~/optimized-baseline-deployment.log
-          echo "---------------------------------------" >> ~/optimized-baseline-xpu-deployment.log
+          echo "Installing scheduler (standalone chart) via helm..."
+          helm install "${SCHEDULER_RELEASE_NAME}" \
+            oci://registry.k8s.io/gateway-api-inference-extension/charts/standalone \
+            -f guides/recipes/scheduler/base.values.yaml \
+            -f guides/recipes/scheduler/features/monitoring.values.yaml \
+            -f guides/${GUIDE_NAME}/scheduler/${GUIDE_NAME}.values.yaml \
+            -n "${NAMESPACE}" \
+            --version "${GAIE_VERSION}" \
+            | tee ~/optimized-baseline-xpu-deployment.log
 
-      - name: Deploy HTTPRoute
+      - name: Deploy model server via kustomize
         run: |
-          cd guides/optimized-baseline
-          echo "Deploying HTTPRoute with RELEASE_NAME_POSTFIX=${RELEASE_NAME_POSTFIX}..."
-          # Create a temporary HTTPRoute file with the correct names
-          sed -e "s/infra-optimized-baseline-inference-gateway/${INFRA_RELEASE_NAME}-inference-gateway/g" \
-              -e "s/gaie-optimized-baseline/${GAIE_RELEASE_NAME}/g" \
-              -e "s/name: llm-d-optimized-baseline/name: llm-d-xpu-is-${RELEASE_NAME_POSTFIX}/g" \
-              httproute.yaml > httproute-xpu.yaml
-          echo "Generated HTTPRoute configuration:"
-          cat httproute-xpu.yaml
-          kubectl apply -f httproute-xpu.yaml -n "${NAMESPACE}" \
+          cd guides/${GUIDE_NAME}/modelserver/xpu/vllm
+
+          # Override image if custom reference is provided
+          if [[ "${HAS_CUSTOM_IMAGE}" == "true" ]]; then
+            echo "Overriding image to ${CUSTOM_IMAGE_REF}"
+            kustomize edit set image "REPLACE_MODEL_SERVER_IMAGE=${CUSTOM_IMAGE_REF}"
+          fi
+
+          echo "Building and applying kustomize manifests..."
+          kubectl apply -n "${NAMESPACE}" -k ./ \
             | tee -a ~/optimized-baseline-xpu-deployment.log
-          echo "---------------------------------------" >> ~/optimized-baseline-xpu-deployment.log
-
-      - name: fetch helm manifests - prepare for upload
-        run: |
-          for release_name in "${INFRA_RELEASE_NAME}" "${GAIE_RELEASE_NAME}" "${MS_RELEASE_NAME}"; do
-            bash .github/scripts/e2e/helm-get-all.sh \
-              ~/optimized-baseline-xpu-deployment.log \
-              "$release_name" \
-              "$NAMESPACE"
-          done
 
       - name: Wait for all pods to be ready
         id: wait_pods
@@ -172,24 +161,11 @@ jobs:
             exit 1
           fi
 
-      - name: Check gateway pod is up
-        if: always()
-        run: |
-          GATEWAY_POD_READY=$(kubectl get pods -n "${NAMESPACE}" | grep "inference-gateway" | awk '{print $2}')
-          if [ "${GATEWAY_POD_READY}" = "1/1" ]; then
-              echo "✅ Gateway pod ready."
-          else
-              echo "❌ Missing gateway pod"
-          fi
-
       - name: Show deployment status
         if: always()
         run: |
           echo "=== Deployments ==="
           kubectl get deployments -n "${NAMESPACE}"
-          echo ""
-          echo "=== Replica Sets ==="
-          kubectl get replicasets -n "${NAMESPACE}"
           echo ""
           echo "=== Pods ==="
           kubectl get pods -n "${NAMESPACE}"
@@ -203,18 +179,13 @@ jobs:
           echo "=== Inference Pools ==="
           kubectl get inferencepools -n "${NAMESPACE}" || true
           echo ""
-          echo "=== HTTPRoutes ==="
-          kubectl get httproutes -n "${NAMESPACE}" || true
-          echo ""
-          echo "=== Gateway ==="
-          kubectl get Gateway -n "${NAMESPACE}" || true
-          echo ""
-          echo "=== Destination Rule ==="
-          kubectl get destinationrule -n "${NAMESPACE}" || true
-          echo ""
 
       - name: Verify installation and run inference tests
         if: steps.wait_pods.outcome == 'success'
+        env:
+          # Standalone mode: no Gateway resource exists; point e2e-validate.sh
+          # at the EPP service's ClusterIP DNS name directly.
+          GATEWAY_HOST: "${{ env.SCHEDULER_RELEASE_NAME }}-epp.${{ env.NAMESPACE }}.svc.cluster.local"
         run: |
           cd .github/scripts/e2e
           ./e2e-validate.sh -n "${NAMESPACE}" -v
@@ -259,6 +230,10 @@ jobs:
       - name: Cleanup deployment
         if: always()
         run: |
-          cd guides/optimized-baseline
-          helmfile destroy -e xpu -n "${NAMESPACE}"
-          kubectl delete ns ${NAMESPACE}
+          echo "Cleaning up helm release..."
+          helm uninstall "${SCHEDULER_RELEASE_NAME}" -n "${NAMESPACE}" || true
+          echo "Cleaning up model server..."
+          kustomize build guides/${GUIDE_NAME}/modelserver/xpu/vllm/ \
+            | kubectl delete -n "${NAMESPACE}" -f - || true
+          echo "Deleting namespace..."
+          kubectl delete ns "${NAMESPACE}" || true

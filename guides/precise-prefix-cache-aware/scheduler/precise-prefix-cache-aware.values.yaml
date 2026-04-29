@@ -1,0 +1,117 @@
+## precise-prefix-cache-aware guide overrides for the scheduler.
+## Layer on top of: recipes/scheduler/base.values.yaml
+##
+## Default mode: central ZMQ — the scheduler SUB binds tcp://*:5556 and vLLM
+## PUBs connect to the EPP service. Single scheduler replica. See
+## features/active-active.values.yaml to switch to active-active HA (two
+## scheduler replicas each with its own Envoy gateway sidecar, behind one
+## Service).
+
+inferenceExtension:
+  # First release carrying llm-d/llm-d-inference-scheduler#862 (EndpointExtractor
+  # via data-layer endpoint-notification-source). Swap to GA tag once promoted.
+  image:
+    name: llm-d-inference-scheduler
+    hub: ghcr.io/llm-d
+    tag: v0.8.0-rc.1
+    pullPolicy: IfNotPresent
+
+  # Expose the ZMQ port for KV-events ingress. In central mode the scheduler
+  # listens here; vLLM connects via its --kv-events-config endpoint.
+  # NOTE: extraServicePorts replaces the chart default, so the http port
+  # (mapped to the Envoy sidecar's :8081 listener) must be re-declared
+  # alongside zmq. We expose it on Service port 80 so the same port works
+  # in standalone and gateway-mode (matches optimized-baseline #1259).
+  extraContainerPorts:
+    - name: zmq
+      containerPort: 5556
+      protocol: TCP
+  extraServicePorts:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 8081
+    - name: zmq
+      port: 5556
+      targetPort: 5556
+      protocol: TCP
+
+  # HF_TOKEN is used by the EPP container's in-process tokenizer fallback
+  # and is required by the UDS tokenizer sidecar (added via the
+  # patches/uds-tokenizer post-renderer). Public models (Qwen/Qwen3-32B)
+  # don't strictly need it, but keeping the reference means things Just
+  # Work if you swap in a gated model.
+  env:
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: llm-d-hf-token
+          key: HF_TOKEN
+
+  # The UDS tokenizer sidecar (container, volumes, and /tmp/tokenizer
+  # mount on the EPP container) is intentionally NOT declared here. The
+  # standalone chart's `sidecar.*` slot is owned by Envoy — overriding
+  # it would lose the proxy. Instead the sidecar is appended via the
+  # `scheduler/patches/uds-tokenizer/post-renderer.sh` helm post-renderer.
+
+  pluginsConfigFile: "precise-prefix-cache-aware-plugins.yaml"
+  pluginsCustomConfig:
+    precise-prefix-cache-aware-plugins.yaml: |
+      # Central ZMQ mode. The scorer's SubscriberManager binds tcp://*:5556
+      # via zmqEndpoint and vLLM PUBs connect into the EPP service. With
+      # discoverPods: false there is no per-pod subscriber churn; the
+      # data-layer endpoint-notification-source is therefore not wired.
+      #
+      # modelName is tied to the deployed vLLM model. Override this (and the
+      # matching field in your modelserver overlay) if you deploy something
+      # other than Qwen/Qwen3-32B.
+      apiVersion: inference.networking.x-k8s.io/v1alpha1
+      kind: EndpointPickerConfig
+      plugins:
+        - type: tokenizer
+          parameters:
+            modelName: Qwen/Qwen3-32B
+            udsTokenizerConfig:
+              socketFile: /tmp/tokenizer/tokenizer-uds.socket
+        - type: single-profile-handler
+        - type: decode-filter
+        - type: precise-prefix-cache-scorer
+          parameters:
+            tokenProcessorConfig:
+              blockSize: 64           # must match vLLM --block-size
+            indexerConfig:
+              speculativeIndexing: true
+              tokenizersPoolConfig:
+                modelName: Qwen/Qwen3-32B
+                uds:
+                  socketFile: /tmp/tokenizer/tokenizer-uds.socket
+              kvBlockIndexConfig:
+                enableMetrics: true
+            kvEventsConfig:
+              topicFilter: "kv@"
+              concurrency: 4
+              discoverPods: false
+              zmqEndpoint: "tcp://*:5556"
+        - type: kv-cache-utilization-scorer
+        - type: queue-scorer
+        - type: max-score-picker
+      schedulingProfiles:
+        - name: default
+          plugins:
+            - pluginRef: decode-filter
+            - pluginRef: tokenizer
+            - pluginRef: precise-prefix-cache-scorer
+              weight: 2.0
+            - pluginRef: kv-cache-utilization-scorer
+              weight: 1.0
+            - pluginRef: queue-scorer
+              weight: 1.0
+            - pluginRef: max-score-picker
+
+inferencePool:
+  targetPorts:
+    - number: 8000
+  modelServerType: vllm
+  modelServers:
+    matchLabels:
+      llm-d.ai/guide: "precise-prefix-cache-aware"

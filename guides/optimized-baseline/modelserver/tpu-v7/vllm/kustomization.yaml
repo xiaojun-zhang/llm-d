@@ -8,7 +8,7 @@ namePrefix: optimized-baseline-tpu-v7-vllm-
 images:
   - name: REPLACE_MODEL_SERVER_IMAGE
     newName: vllm/vllm-tpu
-    newTag: v0.13.2-ironwood
+    newTag: v0.18.0
 
 labels:
   - pairs:
@@ -23,15 +23,20 @@ labels:
         kind: ServiceAccount
         path: metadata/labels
         create: true
-      - group: leaderworkerset.x-k8s.io
+      - group: apps
         version: v1
-        kind: LeaderWorkerSet
+        kind: Deployment
         path: metadata/labels
         create: true
-      - group: leaderworkerset.x-k8s.io
+      - group: apps
         version: v1
-        kind: LeaderWorkerSet
-        path: spec/leaderWorkerTemplate/workerTemplate/metadata/labels
+        kind: Deployment
+        path: spec/selector/matchLabels
+        create: true
+      - group: apps
+        version: v1
+        kind: Deployment
+        path: spec/template/metadata/labels
         create: true
       - group: monitoring.coreos.com
         version: v1
