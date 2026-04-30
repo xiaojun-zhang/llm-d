@@ -12,6 +12,8 @@ HELM_VER="v3.19.0"
 HELMDIFF_VERSION="v3.13.0"
 # Helmfile version
 HELMFILE_VERSION="1.2.1"
+# Kustomize version
+KUSTOMIZE_VERSION="v5.7.1"
 # chart-testing version
 CT_VERSION="3.14.0"
 
@@ -41,6 +43,8 @@ TOOLS INSTALLED:
     - helm (Helm package manager)
     - helm diff plugin (optional but highly recommended)
     - helmfile (Helm deployment tool)
+    - kustomize (standalone binary, required by guides that use a
+      helm post-renderer — e.g. precise-prefix-cache-aware)
 
   Development tools (with --dev):
     - chart-testing (Helm chart testing tool)
@@ -198,6 +202,20 @@ if ! command -v helmfile &> /dev/null; then
   ARCHIVE="helmfile_${HELMFILE_VERSION}_${OS}_${ARCH}.tar.gz"
   HELMFILE_URL="https://github.com/helmfile/helmfile/releases/download/v${HELMFILE_VERSION}/${ARCHIVE}"
   install_from_tarball "${HELMFILE_URL}" "helmfile"
+fi
+
+########################################
+#  kustomize (standalone binary)
+########################################
+# Required by guides that pass a helm post-renderer that shells out to
+# `kustomize` (e.g. precise-prefix-cache-aware — see
+# guides/precise-prefix-cache-aware/scheduler/patches/uds-tokenizer/post-renderer.sh).
+# `kubectl kustomize` is NOT a substitute because helm invokes the post-renderer
+# as a subprocess which calls the `kustomize` command directly.
+if ! command -v kustomize &> /dev/null; then
+  ARCHIVE="kustomize_${KUSTOMIZE_VERSION}_${OS}_${ARCH}.tar.gz"
+  KUSTOMIZE_URL="https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/${ARCHIVE}"
+  install_from_tarball "${KUSTOMIZE_URL}" "kustomize"
 fi
 
 ########################################
