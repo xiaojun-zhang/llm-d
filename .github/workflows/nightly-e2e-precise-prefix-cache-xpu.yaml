@@ -1,8 +1,6 @@
-name: Nightly - Prefix Cache E2E (XPU)
+name: Nightly - Precise Prefix Cache E2E (XPU)
 
-# Nightly regression test for the precise-prefix-cache-aware guide on
-# the self-hosted xpu runner. Deploys via helmfile (xpu env) and
-# validates with e2e-validate.sh.
+# Nightly regression test for the precise-prefix-cache-aware guide on XPU.
 
 on:
   schedule:
@@ -18,18 +16,21 @@ permissions:
   contents: read
 
 concurrency:
-  group: nightly-e2e-prefix-cache-xpu
+  group: nightly-e2e-precise-prefix-cache-xpu
   cancel-in-progress: true
 
 jobs:
   nightly:
     if: github.repository == 'llm-d/llm-d'
-    uses: llm-d/llm-d-infra/.github/workflows/reusable-nightly-e2e-xpu-helmfile.yaml@main
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-nightly-e2e-xpu.yaml@main
     with:
       guide_name: precise-prefix-cache-aware
       namespace: llm-d-nightly-pc-xpu
-      release_name_postfix: kv-events
-      httproute_file: httproute.yaml
+      scheduler_release_name: precise-prefix-cache-aware
+      scheduler_values_files: |
+        guides/recipes/scheduler/base.values.yaml
+        guides/precise-prefix-cache-aware/scheduler/precise-prefix-cache-aware.values.yaml
+      helm_post_renderer: guides/precise-prefix-cache-aware/scheduler/patches/uds-tokenizer/post-renderer.sh
       pod_wait_timeout: '10m'
       llm_d_ref: ${{ github.ref }}
       skip_cleanup: ${{ github.event.inputs.skip_cleanup == 'true' }}
