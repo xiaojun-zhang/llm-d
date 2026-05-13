@@ -19,8 +19,6 @@ llm-d is a high-performance distributed inference serving stack optimized for pr
 llm-d is a [Cloud Native Computing Foundation (CNCF)](https://www.cncf.io/) sandbox project, founded by Red Hat, Google Cloud, IBM Research, CoreWeave, and NVIDIA.
 
 ## What does llm-d offer to production inference?
- [![Release Status](https://img.shields.io/badge/Version-0.7-yellow)](https://github.com/llm-d/llm-d/releases)
-Model servers like [vLLM](https://docs.vllm.ai) and [SGLang](https://github.com/sgl-project/sglang) handle efficiently running large language models on accelerators. llm-d provides state-of-the-art orchestration and optimizations above model servers to serve high-scale real-world traffic efficiently and reliably. Our offerings are organized into four core themes:
 
 Model servers like [vLLM](https://docs.vllm.ai) and [SGLang](https://github.com/sgl-project/sglang) handle efficiently running large language models on accelerators. llm-d provides state-of-the-art orchestration and optimizations above model servers to serve high-scale real-world traffic efficiently and reliably. Our offerings are organized into four core themes:
 
