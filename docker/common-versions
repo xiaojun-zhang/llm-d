@@ -26,6 +26,13 @@ VLLM_PRECOMPILED_WHEEL_COMMIT=b1388b1fbf5aaef47937fabe98931211684666a6 # maps to
 VLLM_XPU_COMMIT_SHA=b1388b1fbf5aaef47937fabe98931211684666a6
 
 # ============================================================================
+# sglang Version Configuration
+# ============================================================================
+# Used by XPU sglang image build (docker/xpu.Dockerfile from sglang upstream).
+SGLANG_REPO=https://github.com/sgl-project/sglang.git
+SGLANG_XPU_VERSION=v0.5.11
+
+# ============================================================================
 # CUDA Version Configuration
 # ============================================================================
 # Used by CUDA builds (Dockerfile.cuda, Dockerfile.rdma-tools)
