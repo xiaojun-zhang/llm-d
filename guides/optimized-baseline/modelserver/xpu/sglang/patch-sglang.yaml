@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: decode
+spec:
+  replicas: 2
+  template:
+    spec:
+      # sglang's docker/xpu.Dockerfile runs as the baked-in `sdp` user
+      # (uid/gid 1001). Miniforge Python is not on PATH; call it by full path.
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+        - name: modelserver
+          command:
+            - "/home/sdp/miniforge3/envs/py3.12/bin/python"
+            - "-m"
+            - "sglang.launch_server"
+          args:
+            - "--model-path=Qwen/Qwen3-0.6B"
+            - "--device=xpu"
+            - "--attention-backend=intel_xpu"
+            - "--host=0.0.0.0"
+            - "--port=8000"
+            - "--mem-fraction-static=0.5"
+            - "--trust-remote-code"
+            - "--enable-metrics"
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: llm-d-hf-token
+                  key: HF_TOKEN
+            - name: HF_HOME
+              value: /home/sdp/.cache/huggingface
+          resources:
+            limits:
+              cpu: "8"
+              memory: 24Gi
+            requests:
+              cpu: "4"
+              memory: 12Gi
+            claims:
+              - name: intel-decode-claim
+          volumeMounts:
+            - mountPath: /dev/shm
+              name: dshm
+            - mountPath: /home/sdp/.cache
+              name: hf-cache
+          startupProbe:
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 120
+          livenessProbe:
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+      resourceClaims:
+        - name: intel-decode-claim
+          resourceClaimTemplateName: intel-claim-template-decode
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Gi
+        - name: hf-cache
+          emptyDir: {}
