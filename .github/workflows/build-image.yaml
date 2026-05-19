@@ -1436,7 +1436,7 @@ jobs:
       - name: Calculate Cache Bust Timestamp
         id: cache_buster_timestamp
         run: |
-          echo "cache_buster_timestamp=$(date)" >> $GITHUB_OUTPUT
+          echo "cache_buster_timestamp=$(date +%s)" >> $GITHUB_OUTPUT
 
       - name: Checkout sglang source
         uses: actions/checkout@v6
