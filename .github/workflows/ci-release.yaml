@@ -860,7 +860,7 @@ jobs:
   release-xpu-sglang-llm-d:
     strategy:
       fail-fast: false
-    runs-on: vllm-runner
+    runs-on: xpu
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
