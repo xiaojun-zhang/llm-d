@@ -46,7 +46,7 @@ on:
 
 jobs:
   deploy_and_validate:
-    if: github.repository == 'llm-d/llm-d'
+    if: github.repository == 'xiaojun-zhang/llm-d'
     runs-on: xpu
     env:
       NAMESPACE: "llm-d-xpu-pc"
