@@ -1,0 +1,83 @@
+# llm-d "gaie" layer: InferencePool + EPP (endpoint picker / inference scheduler).
+#
+# HONEST CAVEAT (the core finding of the llm-d-benefit analysis):
+# The InferencePool v1 API *requires* an endpointPickerRef — llm-d assumes every
+# pool is fronted by an EPP. The EPP's scorers (see the guides' router values:
+# queue-scorer, kv-cache-utilization-scorer, prefix-cache-scorer, no-hit-lru-scorer)
+# are ALL token-LLM concepts. A Wan2.2 T2V diffusion model has no KV cache, no prompt
+# prefix reuse, and is driven via the async /v1/videos job API, not /v1/chat/completions.
+# So the EPP can route to a healthy replica, but it cannot *intelligently* score
+# diffusion requests — the scheduling value-add of llm-d does not apply here.
+#
+# We deploy a minimal EPP so the pool is API-valid and the topology stands up, then
+# attach it. This demonstrates the integration boundary explicitly.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wan-omni-epp
+  namespace: llm-d
+  labels:
+    app: wan-omni-epp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wan-omni-epp
+  template:
+    metadata:
+      labels:
+        app: wan-omni-epp
+    spec:
+      containers:
+        - name: epp
+          image: ghcr.io/llm-d/llm-d-inference-scheduler:v0.8.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --pool-name=wan-omni-pool
+            - --pool-namespace=llm-d
+            - --v=2
+            - --grpc-port=9002
+            - --grpc-health-port=9003
+            - --metrics-port=9090
+          ports:
+            - name: grpc
+              containerPort: 9002
+            - name: grpc-health
+              containerPort: 9003
+            - name: metrics
+              containerPort: 9090
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wan-omni-epp
+  namespace: llm-d
+spec:
+  selector:
+    app: wan-omni-epp
+  ports:
+    - name: grpc
+      port: 9002
+      targetPort: 9002
+      appProtocol: kubernetes.io/h2c
+    - name: grpc-health
+      port: 9003
+      targetPort: 9003
+---
+apiVersion: inference.networking.k8s.io/v1
+kind: InferencePool
+metadata:
+  name: wan-omni-pool
+  namespace: llm-d
+spec:
+  selector:
+    matchLabels:
+      app: wan-omni
+  targetPorts:
+    - number: 8000
+  endpointPickerRef:
+    name: wan-omni-epp
+    port:
+      number: 9002
+    failureMode: FailOpen

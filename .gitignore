@@ -13,3 +13,6 @@ CLAUDE.md
 
 # helm chart directories via kustomize
 **/charts/
+
+# local build/scratch (xpu-prepare vllm-src, vllm-omni work area)
+.cache/

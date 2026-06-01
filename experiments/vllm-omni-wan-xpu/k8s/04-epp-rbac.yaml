@@ -1,0 +1,32 @@
+# RBAC for the EPP. In a real llm-d install the gaie/inferencepool Helm chart ships
+# these; here we add the minimal set so the endpoint picker can initialize the pool
+# and discover the wan-omni pods. Bound to the llm-d:default ServiceAccount (the SA
+# the EPP deployment runs as).
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: wan-omni-epp
+rules:
+  - apiGroups: ["inference.networking.k8s.io"]
+    resources: ["inferencepools"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["inference.networking.x-k8s.io"]
+    resources: ["inferencepools", "inferencemodelrewrites", "inferenceobjectives", "inferencepoolimports"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: wan-omni-epp
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: wan-omni-epp
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: llm-d

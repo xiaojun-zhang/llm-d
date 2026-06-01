@@ -1,0 +1,136 @@
+# vLLM-Omni serving Wan2.2-TI2V-5B as an llm-d-style modelservice endpoint.
+# Mirrors guides/optimized-baseline/modelserver/xpu/vllm: DRA Intel GPU claim +
+# resourceClaims, HF token secret. Diffs from a normal llm-d vLLM deployment:
+#   - image is vllm-omni-xpu (omni backend), entrypoint adds --omni
+#   - model is mounted from host HF cache via hostPath (/var/hf-cache in the kind
+#     node) instead of re-downloading 32GB; HF_HUB_OFFLINE=1
+#   - probes hit /health; the served API is /v1/videos (NOT /v1/chat/completions)
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: intel-claim-wan-omni
+  namespace: llm-d
+  labels:
+    llm-d.ai/role: omni-diffusion
+spec:
+  spec:
+    devices:
+      requests:
+        - name: intel
+          exactly:
+            deviceClassName: gpu.intel.com
+            count: 1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wan-omni
+  namespace: llm-d
+  labels:
+    app: wan-omni
+    llm-d.ai/inferenceServing: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wan-omni
+  template:
+    metadata:
+      labels:
+        app: wan-omni
+        llm-d.ai/inferenceServing: "true"
+    spec:
+      securityContext:
+        # render group on this host is 992 (per memory: render GID 992)
+        fsGroup: 992
+        supplementalGroups: [992, 44]
+      containers:
+        - name: modelserver
+          image: vllm-omni-xpu:local
+          imagePullPolicy: IfNotPresent
+          # image ENTRYPOINT is ["vllm","serve","--omni"]; args append model + flags
+          args:
+            - "Wan-AI/Wan2.2-TI2V-5B-Diffusers"
+            - "--port=8000"
+            - "--enforce-eager"
+            - "--vae-use-slicing"
+            - "--vae-use-tiling"
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: llm-d-hf-token
+                  key: HF_TOKEN
+            # HF_HUB_OFFLINE intentionally NOT set: cache is hit first; network+token
+            # remain as fallback. Offline mode caused a first-resolve LocalEntryNotFound.
+            - name: HF_HOME
+              value: /hf-cache
+            - name: VLLM_OMNI_STORAGE_PATH
+              value: /tmp/storage
+            - name: ZE_AFFINITY_MASK
+              value: "0"
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            limits:
+              cpu: "8"
+              memory: 32Gi
+            requests:
+              cpu: "4"
+              memory: 16Gi
+            claims:
+              - name: intel-gpu
+          volumeMounts:
+            - name: hf-cache
+              mountPath: /hf-cache
+            - name: storage
+              mountPath: /tmp/storage
+            - name: dshm
+              mountPath: /dev/shm
+          startupProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 40
+          readinessProbe:
+            httpGet: {path: /health, port: 8000}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /health, port: 8000}
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+      resourceClaims:
+        - name: intel-gpu
+          resourceClaimTemplateName: intel-claim-wan-omni
+      volumes:
+        - name: hf-cache
+          hostPath:
+            path: /var/hf-cache
+            type: Directory
+        - name: storage
+          emptyDir: {}
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wan-omni
+  namespace: llm-d
+  labels:
+    app: wan-omni
+spec:
+  selector:
+    app: wan-omni
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
