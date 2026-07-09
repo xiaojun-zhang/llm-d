@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: decode
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: sc09dell06-nvd
+      imagePullSecrets:
+        - name: amr-caas-registry
+        - name: amr-idc-registry
+        - name: amr-idc-registry-updated
+      resourceClaims:
+        - name: gpu
+          resourceClaimTemplateName: llmd-dell06-gpu7
+      securityContext:
+        fsGroup: 1000
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: modelserver
+          command: ["/bin/sh", "-lc"]
+          args:
+            - |
+              python3 /opt/llmd-patches/patch_sglang_internvl_epd.py
+              exec python3 -m sglang.launch_server \
+                --model-path=/mnt/weka/data/llm-d-models-pv/hub/models--OpenGVLab--InternVL3_5-30B-A3B/snapshots/main \
+                --served-model-name=OpenGVLab/InternVL3_5-30B-A3B \
+                --host=0.0.0.0 \
+                --port=8000 \
+                --trust-remote-code \
+                --enable-multimodal \
+                --chat-template=internvl-2-5 \
+                --dtype=auto \
+                --kv-cache-dtype=fp8_e4m3 \
+                --tensor-parallel-size=1 \
+                --mem-fraction-static=0.80 \
+                --max-running-requests=32 \
+                --chunked-prefill-size=65536 \
+                --max-prefill-tokens=65536 \
+                --max-total-tokens=250000 \
+                --cuda-graph-max-bs=32 \
+                --page-size=16 \
+                --log-level=info \
+                --enable-metrics \
+                --uvicorn-access-log-exclude-prefixes=/metrics
+          envFrom:
+            - secretRef:
+                name: hf-token-secret
+          env:
+            - name: CUDA_VISIBLE_DEVICES
+              value: "0"
+            - name: HF_HOME
+              value: /mnt/weka/data/llm-d-models-pv
+            - name: HF_HUB_CACHE
+              value: /mnt/weka/data/llm-d-models-pv/hub
+            - name: HF_HUB_OFFLINE
+              value: "1"
+            - name: TRANSFORMERS_CACHE
+              value: /mnt/weka/data/llm-d-models-pv/hub
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: http_proxy
+              value: http://proxy-dmz.intel.com:911
+            - name: https_proxy
+              value: http://proxy-dmz.intel.com:912
+            - name: no_proxy
+              value: 127.0.0.1,localhost,.svc,.cluster.local,172.26.0.0/16,10.66.0.0/16,10.210.0.0/16
+          resources:
+            claims:
+              - name: gpu
+            requests:
+              cpu: "16"
+              memory: 96Gi
+            limits:
+              cpu: "32"
+              memory: 160Gi
+          volumeMounts:
+            - name: model-cache
+              mountPath: /mnt/weka/data/llm-d-models-pv
+              readOnly: true
+            - name: sglang-patches
+              mountPath: /opt/llmd-patches
+              readOnly: true
+            - name: shm
+              mountPath: /dev/shm
+          startupProbe:
+            httpGet:
+              path: /v1/models
+              port: modelserver
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 180
+          readinessProbe:
+            httpGet:
+              path: /v1/models
+              port: modelserver
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: modelserver
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: model-cache
+          hostPath:
+            path: /mnt/weka/data/llm-d-models-pv
+            type: Directory
+        - name: sglang-patches
+          configMap:
+            name: llmd-internvl35-sglang-patches
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Gi

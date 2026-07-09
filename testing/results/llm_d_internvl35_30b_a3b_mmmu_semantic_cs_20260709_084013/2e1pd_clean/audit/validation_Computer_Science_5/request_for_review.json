@@ -1,0 +1,33 @@
+{
+  "answer": "A",
+  "id": "validation_Computer_Science_5",
+  "max_completion_tokens": 512,
+  "messages": [
+    {
+      "content": [
+        {
+          "image_file": {
+            "path": "/results/2e1pd_clean/audit/validation_Computer_Science_5/image_00.png"
+          },
+          "type": "image_file"
+        },
+        {
+          "text": "Solve this MMMU multiple-choice question using the image if needed.\n\nQuestion:\nWhat data structure is pictured in [image]?\n\nOptions:\nA. Singly linked list\nB. Doubly linked list\nC. Circularly linked list\nD. Array\nE. None of the other answers\n\nThink through the problem, then end with a line exactly like 'Final answer: <letter>'.",
+          "type": "text"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "model": "/mnt/weka/data/llm-d-models-pv/hub/models--OpenGVLab--InternVL3_5-30B-A3B/snapshots/main",
+  "options": [
+    "Singly linked list",
+    "Doubly linked list",
+    "Circularly linked list",
+    "Array",
+    "None of the other answers"
+  ],
+  "question": "What data structure is pictured in [image]?",
+  "stream": false,
+  "temperature": 0.0
+}

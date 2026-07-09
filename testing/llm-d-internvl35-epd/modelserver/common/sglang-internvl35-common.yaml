@@ -1,0 +1,536 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llmd-internvl35-sglang-patches
+  namespace: shared-infra
+data:
+  patch_sglang_internvl_epd.py: |
+    from pathlib import Path
+
+    ROOT = Path("/opt/sglang/python/sglang/srt")
+    SERVER_ARGS = ROOT / "server_args.py"
+    INTERNVL_MODEL = ROOT / "models/internvl.py"
+    ENCODE_SERVER = ROOT / "disaggregation/encode_server.py"
+    ENCODE_RECEIVER = ROOT / "disaggregation/encode_receiver.py"
+    INTERNVL_PROCESSOR = ROOT / "multimodal/processors/internvl.py"
+
+
+    def replace_once(text: str, old: str, new: str, label: str) -> str:
+        if old not in text:
+            if new in text:
+                return text
+            raise RuntimeError(f"patch marker not found: {label}")
+        return text.replace(old, new, 1)
+
+
+    def patch_server_args() -> None:
+        text = SERVER_ARGS.read_text()
+        if '"InternVLChatModel"' not in text:
+            start = text.index(
+                "if (self.encoder_only or self.language_only) and model_arch not in ["
+            )
+            end = text.index("        ]:", start)
+            text = (
+                text[:end]
+                + '            "InternVLChatModel",\n'
+                + text[end:]
+            )
+        SERVER_ARGS.write_text(text)
+
+
+    def patch_internvl_model() -> None:
+        text = INTERNVL_MODEL.read_text()
+        text = replace_once(
+            text,
+            "        super().__init__()\n"
+            "        self.config = config\n"
+            "        self.use_data_parallel = get_global_server_args().mm_enable_dp_encoder\n",
+            "        super().__init__()\n"
+            "        self.config = config\n"
+            '        self.encoder_only = getattr(config, "encoder_only", False)\n'
+            '        self.language_only = getattr(config, "language_only", False)\n'
+            "        self.use_data_parallel = get_global_server_args().mm_enable_dp_encoder\n",
+            "internvl flags",
+        )
+        text = replace_once(
+            text,
+            "        self.vision_model = InternVisionModel(\n"
+            "            config.vision_config,\n"
+            "            use_data_parallel=self.use_data_parallel,\n"
+            "        )\n"
+            '        if config.llm_config.architectures[0] == "Qwen2ForCausalLM":\n',
+            "        if not self.language_only:\n"
+            "            self.vision_model = InternVisionModel(\n"
+            "                config.vision_config,\n"
+            "                use_data_parallel=self.use_data_parallel,\n"
+            "            )\n"
+            "        if not self.encoder_only:\n"
+            '            if config.llm_config.architectures[0] == "Qwen2ForCausalLM":\n',
+            "vision/language split start",
+        )
+        text = replace_once(
+            text,
+            "            self.language_model = Qwen2ForCausalLM(\n"
+            "                config=config.llm_config, quant_config=quant_config\n"
+            "            )\n"
+            '        elif config.llm_config.architectures[0] == "InternLM2ForCausalLM":\n',
+            "                self.language_model = Qwen2ForCausalLM(\n"
+            "                    config=config.llm_config, quant_config=quant_config\n"
+            "                )\n"
+            '            elif config.llm_config.architectures[0] == "InternLM2ForCausalLM":\n',
+            "qwen language indent",
+        )
+        text = replace_once(
+            text,
+            "            self.language_model = InternLM2ForCausalLM(\n"
+            "                config=config.llm_config, quant_config=quant_config\n"
+            "            )\n"
+            '        elif config.llm_config.architectures[0] == "Qwen3MoeForCausalLM":\n',
+            "                self.language_model = InternLM2ForCausalLM(\n"
+            "                    config=config.llm_config, quant_config=quant_config\n"
+            "                )\n"
+            '            elif config.llm_config.architectures[0] == "Qwen3MoeForCausalLM":\n',
+            "internlm language indent",
+        )
+        text = replace_once(
+            text,
+            "            self.language_model = Qwen3MoeForCausalLM(\n"
+            "                config=config.llm_config, quant_config=quant_config\n"
+            "            )\n"
+            '        elif config.llm_config.architectures[0] == "GptOssForCausalLM":\n',
+            "                self.language_model = Qwen3MoeForCausalLM(\n"
+            "                    config=config.llm_config, quant_config=quant_config\n"
+            "                )\n"
+            '            elif config.llm_config.architectures[0] == "GptOssForCausalLM":\n',
+            "qwen3moe language indent",
+        )
+        text = replace_once(
+            text,
+            "            self.language_model = GptOssForCausalLM(\n"
+            "                config=config.llm_config, quant_config=quant_config\n"
+            "            )\n"
+            '        elif config.llm_config.architectures[0] == "Qwen3ForCausalLM":\n',
+            "                self.language_model = GptOssForCausalLM(\n"
+            "                    config=config.llm_config, quant_config=quant_config\n"
+            "                )\n"
+            '            elif config.llm_config.architectures[0] == "Qwen3ForCausalLM":\n',
+            "gptoss language indent",
+        )
+        text = replace_once(
+            text,
+            "            self.language_model = Qwen3ForCausalLM(\n"
+            "                config=config.llm_config, quant_config=quant_config\n"
+            "            )\n"
+            "        else:\n"
+            "            raise NotImplementedError(\n"
+            "                f\"{config.llm_config.architectures[0]} is not implemented.\"\n"
+            "            )\n",
+            "                self.language_model = Qwen3ForCausalLM(\n"
+            "                    config=config.llm_config, quant_config=quant_config\n"
+            "                )\n"
+            "            else:\n"
+            "                raise NotImplementedError(\n"
+            "                    f\"{config.llm_config.architectures[0]} is not implemented.\"\n"
+            "                )\n",
+            "qwen3 language indent",
+        )
+        text = replace_once(
+            text,
+            "        self.mlp1 = nn.Sequential(\n"
+            "            nn.LayerNorm(vit_hidden_size * int(1 / self.downsample_ratio) ** 2),\n"
+            "            nn.Linear(\n"
+            "                vit_hidden_size * int(1 / self.downsample_ratio) ** 2, llm_hidden_size\n"
+            "            ),\n"
+            "            nn.GELU(),\n"
+            "            nn.Linear(llm_hidden_size, llm_hidden_size),\n"
+            "        )\n",
+            "        if not self.language_only:\n"
+            "            self.mlp1 = nn.Sequential(\n"
+            "                nn.LayerNorm(vit_hidden_size * int(1 / self.downsample_ratio) ** 2),\n"
+            "                nn.Linear(\n"
+            "                    vit_hidden_size * int(1 / self.downsample_ratio) ** 2,\n"
+            "                    llm_hidden_size,\n"
+            "                ),\n"
+            "                nn.GELU(),\n"
+            "                nn.Linear(llm_hidden_size, llm_hidden_size),\n"
+            "            )\n",
+            "mlp split",
+        )
+        text = replace_once(
+            text,
+            "        self.model = self.language_model.model\n",
+            "        if not self.encoder_only:\n"
+            "            self.model = self.language_model.model\n",
+            "model alias split",
+        )
+        text = replace_once(
+            text,
+            "    def get_image_feature(self, items: List[MultimodalDataItem]):\n",
+            "    @staticmethod\n"
+            "    def _flatten_feature_tensors(feature):\n"
+            "        if isinstance(feature, torch.Tensor):\n"
+            "            if (\n"
+            "                feature.ndim == 3\n"
+            "                and feature.shape[0] in (1, 3, 4)\n"
+            "                and feature.shape[-1] == feature.shape[-2]\n"
+            "            ):\n"
+            "                feature = feature.unsqueeze(0)\n"
+            "            return [feature]\n"
+            "        if isinstance(feature, (list, tuple)):\n"
+            "            tensors = []\n"
+            "            for value in feature:\n"
+            "                tensors.extend(InternVLChatModel._flatten_feature_tensors(value))\n"
+            "            return tensors\n"
+            "        raise TypeError(f\"Unsupported InternVL feature type: {type(feature)!r}\")\n"
+            "\n"
+            "    def get_image_feature(self, items: List[MultimodalDataItem]):\n",
+            "feature tensor flattener",
+        )
+        text = replace_once(
+            text,
+            "        pixel_values = torch.cat([item.feature for item in items])\n",
+            "        pixel_values = torch.cat(\n"
+            "            [\n"
+            "                tensor\n"
+            "                for item in items\n"
+            "                for tensor in self._flatten_feature_tensors(item.feature)\n"
+            "            ],\n"
+            "            dim=0,\n"
+            "        )\n",
+            "image feature list flattening",
+        )
+        text = replace_once(
+            text,
+            "        pixel_values = torch.cat([item.feature for item in items], dim=0)\n",
+            "        pixel_values = torch.cat(\n"
+            "            [\n"
+            "                tensor\n"
+            "                for item in items\n"
+            "                for tensor in self._flatten_feature_tensors(item.feature)\n"
+            "            ],\n"
+            "            dim=0,\n"
+            "        )\n",
+            "video feature list flattening",
+        )
+        text = replace_once(
+            text,
+            "                num_experts=self.config.num_experts,\n",
+            "                num_experts=getattr(\n"
+            "                    self.config,\n"
+            '                    "num_experts",\n'
+            '                    getattr(self.config.llm_config, "num_experts", None),\n'
+            "                ),\n",
+            "num experts fallback",
+        )
+        text = replace_once(
+            text,
+            '            if "rotary_emb.inv_freq" in name:\n'
+            "                continue\n",
+            '            if "rotary_emb.inv_freq" in name:\n'
+            "                continue\n"
+            '            is_encoder_weight = name.startswith("vision_model.") or name.startswith(\n'
+            '                "mlp1."\n'
+            "            )\n"
+            "            if self.encoder_only and not is_encoder_weight:\n"
+            "                continue\n"
+            "            if self.language_only and is_encoder_weight:\n"
+            "                continue\n",
+            "weight filtering",
+        )
+        INTERNVL_MODEL.write_text(text)
+
+
+    def patch_encode_server() -> None:
+        text = ENCODE_SERVER.read_text()
+        text = replace_once(
+            text,
+            "def _convert(data):\n"
+            "    if isinstance(data, torch.Tensor):\n"
+            "        return data\n"
+            "    elif isinstance(data, np.ndarray):\n"
+            "        return torch.tensor(data)\n"
+            "    elif isinstance(data, list) and isinstance(data[0], np.ndarray):\n"
+            "        return torch.tensor(np.array(data))\n"
+            "    elif isinstance(data, list) and isinstance(data[0], (int, float)):\n"
+            "        return torch.tensor(data)\n"
+            "    else:\n"
+            "        return data\n",
+            "def _convert(data):\n"
+            "    if isinstance(data, torch.Tensor):\n"
+            "        return data\n"
+            "    elif isinstance(data, np.ndarray):\n"
+            "        return torch.tensor(data)\n"
+            "    elif isinstance(data, list) and isinstance(data[0], np.ndarray):\n"
+            "        return torch.tensor(np.array(data))\n"
+            "    elif isinstance(data, list) and isinstance(data[0], (int, float)):\n"
+            "        return torch.tensor(data)\n"
+            "    else:\n"
+            "        return data\n"
+            "\n"
+            "\n"
+            "def _flatten_tensor_features(data):\n"
+            "    if isinstance(data, torch.Tensor):\n"
+            "        if (\n"
+            "            data.ndim == 3\n"
+            "            and data.shape[0] in (1, 3, 4)\n"
+            "            and data.shape[-1] == data.shape[-2]\n"
+            "        ):\n"
+            "            data = data.unsqueeze(0)\n"
+            "        return [data]\n"
+            "    if isinstance(data, np.ndarray):\n"
+            "        if data.ndim == 3 and data.shape[0] in (1, 3, 4) and data.shape[-1] == data.shape[-2]:\n"
+            "            data = np.expand_dims(data, axis=0)\n"
+            "        return [torch.tensor(data)]\n"
+            "    if isinstance(data, (list, tuple)):\n"
+            "        tensors = []\n"
+            "        for value in data:\n"
+            "            tensors.extend(_flatten_tensor_features(value))\n"
+            "        return tensors\n"
+            "    raise TypeError(f\"Unsupported multimodal feature type: {type(data)!r}\")\n"
+            "\n"
+            "\n"
+            "def _as_batched_feature_tensor(data):\n"
+            "    if isinstance(data, torch.Tensor):\n"
+            "        return data\n"
+            "    tensors = _flatten_tensor_features(data)\n"
+            "    if not tensors:\n"
+            "        raise ValueError(\"No multimodal feature tensors found\")\n"
+            "    return torch.cat(tensors, dim=0)\n",
+            "encoder tensor feature flattener",
+        )
+        text = replace_once(
+            text,
+            "        if modality == Modality.AUDIO:\n"
+            "            return int(grid.item())\n"
+            "        else:\n"
+            "            return int(grid[0] * grid[1] * grid[2])\n",
+            "        if modality == Modality.AUDIO:\n"
+            "            return int(grid.item())\n"
+            "        elif self.model_type == \"internvl_chat\" and modality == Modality.IMAGE:\n"
+            "            return int(grid[0])\n"
+            "        else:\n"
+            "            return int(grid[0] * grid[1] * grid[2])\n",
+            "internvl patch count",
+        )
+        text = replace_once(
+            text,
+            "    for attr in attrs:\n"
+            "        if attr in mm_inputs and mm_inputs[attr] is not None:\n"
+            "            return mm_inputs[attr]\n"
+            "    raise ValueError(f\"Grid dim ({_mm_grid_attrs[modality]}) not found in {mm_inputs}\")\n",
+            "    for attr in attrs:\n"
+            "        if attr in mm_inputs and mm_inputs[attr] is not None:\n"
+            "            return mm_inputs[attr]\n"
+            "    if (model_type or \"\").lower() == \"internvl_chat\" and modality == Modality.IMAGE:\n"
+            "        num_patches = mm_inputs.get(\"num_patches\")\n"
+            "        if num_patches is not None:\n"
+            "            if isinstance(num_patches, torch.Tensor):\n"
+            "                patch_counts = num_patches.flatten().tolist()\n"
+            "            elif isinstance(num_patches, (list, tuple)):\n"
+            "                patch_counts = num_patches\n"
+            "            else:\n"
+            "                patch_counts = [num_patches]\n"
+            "            return [[int(count), 32, 32] for count in patch_counts]\n"
+            "    raise ValueError(f\"Grid dim ({_mm_grid_attrs[modality]}) not found in {mm_inputs}\")\n",
+            "internvl num_patches grid fallback",
+        )
+        text = replace_once(
+            text,
+            "        offset = 0\n"
+            "        logger.info(f\"{mm_feature.shape=} with {modality=}\")\n",
+            "        mm_feature = _as_batched_feature_tensor(mm_feature)\n"
+            "        offset = 0\n"
+            "        logger.info(f\"{mm_feature.shape=} with {modality=}\")\n",
+            "feature hashing list flattening",
+        )
+        text = replace_once(
+            text,
+            "        else:\n"
+            "            sub_feature_list = []\n"
+            "            offsets = [0]\n",
+            "        else:\n"
+            "            mm_feature = _as_batched_feature_tensor(mm_feature)\n"
+            "            sub_feature_list = []\n"
+            "            offsets = [0]\n",
+            "encode missing list flattening",
+        )
+        text = replace_once(
+            text,
+            "        else:\n"
+            "            if (\n"
+            "                self.model_type in [\"kimi_k25\", \"kimi_vl\"]\n",
+            "        else:\n"
+            "            if self.model_type == \"internvl_chat\" and modality == Modality.IMAGE:\n"
+            "                return int(grid[0] * grid[1] * grid[2]) // 4\n"
+            "            if (\n"
+            "                self.model_type in [\"kimi_k25\", \"kimi_vl\"]\n",
+            "internvl token count",
+        )
+        ENCODE_SERVER.write_text(text)
+
+
+    def patch_encode_receiver() -> None:
+        text = ENCODE_RECEIVER.read_text()
+        text = replace_once(
+            text,
+            "        self.error_code = error_code\n",
+            "        self.error_code = int(error_code) if error_code is not None else None\n",
+            "encoder error code serialization",
+        )
+        ENCODE_RECEIVER.write_text(text)
+
+
+    def patch_internvl_processor() -> None:
+        text = INTERNVL_PROCESSOR.read_text()
+        if "def get_mm_data(self, prompt, embeddings, **kwargs):" not in text:
+            method = (
+                "    def get_mm_data(self, prompt, embeddings, **kwargs):\n"
+                "        img_grid_thw = kwargs.get(\"img_grid_thw\", None)\n"
+                "        if img_grid_thw is None:\n"
+                "            raise ValueError(\"InternVL E/PD reconstruction requires img_grid_thw\")\n"
+                "\n"
+                "        if isinstance(prompt, list):\n"
+                "            input_text_updated = self.tokenizer.decode(prompt)\n"
+                "        else:\n"
+                "            input_text_updated = prompt or \"\"\n"
+                "\n"
+                "        image_count = len(img_grid_thw)\n"
+                "        input_text_updated = self._ensure_placeholders_before_assistant(\n"
+                "            input_text_updated, self.IMAGE_PLACEHOLDER_TOKEN, image_count\n"
+                "        )\n"
+                "        input_text_updated = input_text_updated.replace(\n"
+                "            self.IMAGE_PLACEHOLDER_TOKEN, \"<<<__IMG_PLACEHOLDER__>>>\"\n"
+                "        )\n"
+                "        input_text_updated = input_text_updated.replace(\n"
+                "            self.IMG_CONTEXT, \"<<<__IMG_PLACEHOLDER__>>>\"\n"
+                "        )\n"
+                "\n"
+                "        token_counts = []\n"
+                "        for grid in img_grid_thw:\n"
+                "            grid_tensor = torch.as_tensor(grid, dtype=torch.long)\n"
+                "            token_counts.append(int(torch.prod(grid_tensor).item()) // 4)\n"
+                "\n"
+                "        for token_count in token_counts:\n"
+                "            image_tokens = (\n"
+                "                self.IMG_START + (self.IMG_CONTEXT * token_count) + self.IMG_END\n"
+                "            )\n"
+                "            input_text_updated = input_text_updated.replace(\n"
+                "                \"<<<__IMG_PLACEHOLDER__>>>\", image_tokens, 1\n"
+                "            )\n"
+                "\n"
+                "        input_ids_tensor = self.tokenizer(input_text_updated, return_tensors=\"pt\")[\n"
+                "            \"input_ids\"\n"
+                "        ].flatten()\n"
+                "        input_ids = input_ids_tensor.tolist()\n"
+                "\n"
+                "        image_embeddings = embeddings[Modality.IMAGE]\n"
+                "        image_offsets = self.get_mm_items_offset(\n"
+                "            input_ids=input_ids_tensor.to(image_embeddings.device),\n"
+                "            mm_token_id=self.img_context_token_id,\n"
+                "        )\n"
+                "\n"
+                "        mm_items = []\n"
+                "        consumed = 0\n"
+                "        for offset, token_count in zip(image_offsets, token_counts):\n"
+                "            embedding_slice = image_embeddings[consumed : consumed + token_count]\n"
+                "            consumed += token_count\n"
+                "            mm_items.append(\n"
+                "                MultimodalDataItem(\n"
+                "                    modality=Modality.IMAGE,\n"
+                "                    offsets=[offset],\n"
+                "                    precomputed_embeddings=embedding_slice,\n"
+                "                )\n"
+                "            )\n"
+                "\n"
+                "        return MultimodalProcessorOutput(\n"
+                "            input_ids=input_ids,\n"
+                "            mm_items=mm_items,\n"
+                "            im_start_id=self.img_start_token_id,\n"
+                "            im_end_id=self.img_end_token_id,\n"
+                "            im_token_id=self.img_context_token_id,\n"
+                "            video_token_id=self.video_token_id,\n"
+                "        )\n"
+                "\n"
+            )
+            text = replace_once(
+                text,
+                "    async def process_mm_data_async(\n",
+                method + "    async def process_mm_data_async(\n",
+                "processor get_mm_data",
+            )
+        text = replace_once(
+            text,
+            "        if isinstance(input_text, list) or self._has_special_format(\n"
+            "            image_data, video_data\n"
+            "        ):\n",
+            "        has_special_format = self._has_special_format(image_data, video_data)\n"
+            "        if isinstance(input_text, list) and not has_special_format:\n"
+            "            input_text = self.tokenizer.decode(input_text)\n"
+            "        if isinstance(input_text, list) or has_special_format:\n",
+            "processor tokenized prompt handling",
+        )
+        INTERNVL_PROCESSOR.write_text(text)
+
+
+    patch_server_args()
+    patch_internvl_model()
+    patch_encode_server()
+    patch_encode_receiver()
+    patch_internvl_processor()
+    print("InternVL native E/PD startup patches applied")
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: llmd-dell06-gpu7
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+        - name: gpu
+          exactly:
+            count: 1
+            deviceClassName: gpu.nvidia.com
+            selectors:
+              - cel:
+                  expression: |
+                    device.attributes["gpu.nvidia.com"]["uuid"] in [
+                      "GPU-5fd91b51-6253-0459-27bd-de55bb3e8ae6"
+                    ]
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: llmd-intel02-b60-xpu0
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+        - name: xpu
+          exactly:
+            count: 1
+            deviceClassName: gpu.intel.com
+            selectors:
+              - cel:
+                  expression: |
+                    device.attributes["gpu.intel.com"].pciAddress == "0000:18:00.0"
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: llmd-intel02-b60-xpu1
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+        - name: xpu
+          exactly:
+            count: 1
+            deviceClassName: gpu.intel.com
+            selectors:
+              - cel:
+                  expression: |
+                    device.attributes["gpu.intel.com"].pciAddress == "0000:1c:00.0"

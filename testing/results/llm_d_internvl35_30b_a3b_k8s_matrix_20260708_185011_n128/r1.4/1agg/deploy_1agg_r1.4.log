@@ -1,0 +1,23 @@
+Deploying 1AGG in namespace shared-infra
+H200 card: sc09dell06-nvd GPU 7, UUID GPU-5fd91b51-6253-0459-27bd-de55bb3e8ae6
+This will create pods and ResourceClaims; run only after cards are reserved.
+WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/h-zheng/.kube/config
+WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/h-zheng/.kube/config
+Release "llmd-internvl35-1agg" does not exist. Installing it now.
+Pulled: ghcr.io/llm-d/charts/llm-d-router-standalone:v0.9.0
+Digest: sha256:8150c84045d59e6e91991daf810322140e116d5e02d244d96cbfc2b3000825cd
+NAME: llmd-internvl35-1agg
+LAST DEPLOYED: Wed Jul  8 20:32:28 2026
+NAMESPACE: shared-infra
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+serviceaccount/llmd-internvl35-1agg-sglang-sa created
+configmap/llmd-internvl35-1agg-sglang-llmd-internvl35-sglang-patches created
+deployment.apps/llmd-internvl35-1agg-sglang-decode created
+resourceclaimtemplate.resource.k8s.io/llmd-internvl35-1agg-sglang-llmd-dell06-gpu7 created
+resourceclaimtemplate.resource.k8s.io/llmd-internvl35-1agg-sglang-llmd-intel02-b60-xpu0 created
+resourceclaimtemplate.resource.k8s.io/llmd-internvl35-1agg-sglang-llmd-intel02-b60-xpu1 created
+Waiting for deployment "llmd-internvl35-1agg-sglang-decode" rollout to finish: 0 of 1 updated replicas are available...
+deployment "llmd-internvl35-1agg-sglang-decode" successfully rolled out
+deployment "llmd-internvl35-1agg-epp" successfully rolled out

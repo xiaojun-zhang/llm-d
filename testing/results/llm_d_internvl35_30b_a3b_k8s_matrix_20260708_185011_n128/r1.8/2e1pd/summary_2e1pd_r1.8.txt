@@ -1,0 +1,38 @@
+============ Serving Benchmark Result ============
+Backend:                                 sglang-oai-chat
+Traffic request rate:                    1.8       
+Max request concurrency:                 8         
+Successful requests:                     128       
+Benchmark duration (s):                  73.65     
+Total input tokens:                      2371853   
+Total input text tokens:                 9485      
+Total input vision tokens:               2362368   
+Total generated tokens:                  1051      
+Total generated tokens (retokenized):    543       
+Request throughput (req/s):              1.74      
+Input token throughput (tok/s):          32203.67  
+Output token throughput (tok/s):         14.27     
+Peak output token throughput (tok/s):    35.00     
+Peak concurrent requests:                10        
+Total token throughput (tok/s):          32217.94  
+Concurrency:                             2.83      
+----------------End-to-End Latency----------------
+Mean E2E Latency (ms):                   1630.43   
+Median E2E Latency (ms):                 1555.58   
+P90 E2E Latency (ms):                    1971.91   
+P99 E2E Latency (ms):                    2392.83   
+---------------Time to First Token----------------
+Mean TTFT (ms):                          868.08    
+Median TTFT (ms):                        1380.26   
+P99 TTFT (ms):                           2017.39   
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          195.70    
+Median TPOT (ms):                        13.26     
+P99 TPOT (ms):                           1397.93   
+---------------Inter-Token Latency----------------
+Mean ITL (ms):                           5.72      
+Median ITL (ms):                         1.11      
+P95 ITL (ms):                            28.05     
+P99 ITL (ms):                            92.55     
+Max ITL (ms):                            150.80    
+==================================================
