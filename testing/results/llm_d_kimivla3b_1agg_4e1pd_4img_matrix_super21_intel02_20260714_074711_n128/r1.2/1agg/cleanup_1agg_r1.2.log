@@ -1,0 +1,16 @@
+serviceaccount "llmd-kimivla3b-1agg-sglang-sa" deleted from shared-infra namespace
+deployment.apps "llmd-kimivla3b-1agg-sglang-decode" deleted from shared-infra namespace
+resourceclaimtemplate.resource.k8s.io "llmd-kimivla3b-1agg-sglang-llmd-kimivla3b-intel02-b60-xpu0" deleted from shared-infra namespace
+resourceclaimtemplate.resource.k8s.io "llmd-kimivla3b-1agg-sglang-llmd-kimivla3b-intel02-b60-xpu1" deleted from shared-infra namespace
+resourceclaimtemplate.resource.k8s.io "llmd-kimivla3b-1agg-sglang-llmd-kimivla3b-intel02-b60-xpu2" deleted from shared-infra namespace
+resourceclaimtemplate.resource.k8s.io "llmd-kimivla3b-1agg-sglang-llmd-kimivla3b-intel02-b60-xpu3" deleted from shared-infra namespace
+resourceclaimtemplate.resource.k8s.io "llmd-kimivla3b-1agg-sglang-llmd-kimivla3b-super21-h200-gpu7" deleted from shared-infra namespace
+WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/h-zheng/.kube/config
+WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/h-zheng/.kube/config
+Error: uninstall: Release not loaded: llmd-kimivla3b-4e1pd: release: not found
+WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/h-zheng/.kube/config
+WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/h-zheng/.kube/config
+Error: uninstall: Release not loaded: llmd-kimivla3b-2e1pd: release: not found
+WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/h-zheng/.kube/config
+WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/h-zheng/.kube/config
+release "llmd-kimivla3b-1agg" uninstalled

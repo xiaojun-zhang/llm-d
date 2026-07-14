@@ -1,0 +1,3 @@
+NAME                                                 READY   STATUS    RESTARTS   AGE     IP                NODE               NOMINATED NODE   READINESS GATES
+llmd-kimivla3b-1agg-epp-6dfcc8ff88-zs4hf             2/2     Running   0          7m59s   192.168.167.184   sc09rvp03-b60      <none>           <none>
+llmd-kimivla3b-1agg-sglang-decode-56df684c54-6t6sh   1/1     Running   0          7m59s   192.168.200.209   sc09super21-h200   <none>           <none>

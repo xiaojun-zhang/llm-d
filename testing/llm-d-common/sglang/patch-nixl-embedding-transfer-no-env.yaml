@@ -1,0 +1,17 @@
+- op: add
+  path: /spec/template/spec/volumes/-
+  value:
+    name: nixl-embedding-transfer-patch
+    configMap:
+      name: nixl-embedding-transfer-patch
+- op: add
+  path: /spec/template/spec/containers/0/volumeMounts/-
+  value:
+    name: nixl-embedding-transfer-patch
+    mountPath: /opt/llmd-nixl-patches
+    readOnly: true
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: SGLANG_EMBEDDING_NIXL_BACKEND
+    value: UCX

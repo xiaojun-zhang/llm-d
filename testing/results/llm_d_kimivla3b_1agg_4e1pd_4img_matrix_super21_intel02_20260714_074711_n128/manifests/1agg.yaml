@@ -1,0 +1,319 @@
+apiVersion: v1
+automountServiceAccountToken: false
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/component: 1agg
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-variant: gpu
+    llm-d.ai/accelerator-vendor: nvidia
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-1agg
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: decode
+    llm-d.ai/topology: 1agg
+  name: llmd-kimivla3b-1agg-sglang-sa
+  namespace: shared-infra
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: 1agg
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-variant: gpu
+    llm-d.ai/accelerator-vendor: nvidia
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-1agg
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: decode
+    llm-d.ai/topology: 1agg
+  name: llmd-kimivla3b-1agg-sglang-decode
+  namespace: shared-infra
+spec:
+  progressDeadlineSeconds: 3600
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: 1agg
+      app.kubernetes.io/name: llmd-kimivla3b-epd
+      llm-d.ai/accelerator-variant: gpu
+      llm-d.ai/accelerator-vendor: nvidia
+      llm-d.ai/engine-type: sglang
+      llm-d.ai/guide: kimivla3b-epd-1agg
+      llm-d.ai/model: kimivla3b
+      llm-d.ai/role: decode
+      llm-d.ai/topology: 1agg
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: 1agg
+        app.kubernetes.io/name: llmd-kimivla3b-epd
+        llm-d.ai/accelerator-variant: gpu
+        llm-d.ai/accelerator-vendor: nvidia
+        llm-d.ai/engine-type: sglang
+        llm-d.ai/guide: kimivla3b-epd-1agg
+        llm-d.ai/model: kimivla3b
+        llm-d.ai/role: decode
+        llm-d.ai/topology: 1agg
+    spec:
+      containers:
+      - args:
+        - |
+          exec python3 -m sglang.launch_server \
+            --model-path=/mnt/weka/data/llm-d-models-pv/hub/models--moonshotai--Kimi-VL-A3B-Instruct/snapshots/main \
+            --served-model-name=moonshotai/Kimi-VL-A3B-Instruct \
+            --host=0.0.0.0 \
+            --port=8000 \
+            --trust-remote-code \
+            --enable-multimodal \
+            --dtype=auto \
+            --kv-cache-dtype=fp8_e4m3 \
+            --tensor-parallel-size=1 \
+            --mem-fraction-static=0.80 \
+            --max-running-requests=32 \
+            --chunked-prefill-size=65536 \
+            --max-prefill-tokens=65536 \
+            --max-total-tokens=250000 \
+            --disable-cuda-graph \
+            --page-size=16 \
+            --log-level=info \
+            --enable-metrics \
+            --uvicorn-access-log-exclude-prefixes=/metrics
+        command:
+        - /bin/sh
+        - -lc
+        env:
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+        - name: HF_HOME
+          value: /mnt/weka/data/llm-d-models-pv
+        - name: HF_HUB_CACHE
+          value: /mnt/weka/data/llm-d-models-pv/hub
+        - name: HF_HUB_OFFLINE
+          value: "1"
+        - name: TRANSFORMERS_CACHE
+          value: /mnt/weka/data/llm-d-models-pv/hub
+        - name: HF_MODULES_CACHE
+          value: /tmp/hf_modules
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: http_proxy
+          value: http://proxy-dmz.intel.com:911
+        - name: https_proxy
+          value: http://proxy-dmz.intel.com:912
+        - name: no_proxy
+          value: 127.0.0.1,localhost,.svc,.cluster.local,172.26.0.0/16,10.66.0.0/16,10.210.0.0/16
+        envFrom:
+        - secretRef:
+            name: hf-token-secret
+        image: amr-registry.caas.intel.com/taas/scalable-deploy-intel/main_dockerfile.dynamo_gpu:477-e3682ee
+        livenessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /v1/models
+            port: modelserver
+          initialDelaySeconds: 1800
+          periodSeconds: 30
+          timeoutSeconds: 30
+        name: modelserver
+        ports:
+        - containerPort: 8000
+          name: modelserver
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /v1/models
+            port: modelserver
+          periodSeconds: 10
+          timeoutSeconds: 5
+        resources:
+          claims:
+          - name: gpu
+          limits:
+            cpu: "32"
+            memory: 160Gi
+          requests:
+            cpu: "16"
+            memory: 96Gi
+        startupProbe:
+          failureThreshold: 180
+          httpGet:
+            path: /v1/models
+            port: modelserver
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+        volumeMounts:
+        - mountPath: /mnt/weka/data/llm-d-models-pv
+          name: model-cache
+          readOnly: true
+        - mountPath: /dev/shm
+          name: shm
+      imagePullSecrets:
+      - name: amr-caas-registry
+      - name: amr-idc-registry
+      - name: amr-idc-registry-updated
+      nodeSelector:
+        kubernetes.io/hostname: sc09super21-h200
+      resourceClaims:
+      - name: gpu
+        resourceClaimTemplateName: llmd-kimivla3b-1agg-sglang-llmd-kimivla3b-super21-h200-gpu7
+      securityContext:
+        fsGroup: 1000
+      serviceAccountName: llmd-kimivla3b-1agg-sglang-sa
+      terminationGracePeriodSeconds: 120
+      volumes:
+      - hostPath:
+          path: /mnt/weka/data/llm-d-models-pv
+          type: Directory
+        name: model-cache
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 64Gi
+        name: shm
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  labels:
+    app.kubernetes.io/component: 1agg
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-variant: gpu
+    llm-d.ai/accelerator-vendor: nvidia
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-1agg
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: decode
+    llm-d.ai/topology: 1agg
+  name: llmd-kimivla3b-1agg-sglang-llmd-kimivla3b-intel02-b60-xpu0
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+      - exactly:
+          count: 1
+          deviceClassName: gpu.intel.com
+          selectors:
+          - cel:
+              expression: |
+                device.attributes["gpu.intel.com"].pciAddress == "0000:18:00.0"
+        name: xpu
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  labels:
+    app.kubernetes.io/component: 1agg
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-variant: gpu
+    llm-d.ai/accelerator-vendor: nvidia
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-1agg
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: decode
+    llm-d.ai/topology: 1agg
+  name: llmd-kimivla3b-1agg-sglang-llmd-kimivla3b-intel02-b60-xpu1
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+      - exactly:
+          count: 1
+          deviceClassName: gpu.intel.com
+          selectors:
+          - cel:
+              expression: |
+                device.attributes["gpu.intel.com"].pciAddress == "0000:1c:00.0"
+        name: xpu
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  labels:
+    app.kubernetes.io/component: 1agg
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-variant: gpu
+    llm-d.ai/accelerator-vendor: nvidia
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-1agg
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: decode
+    llm-d.ai/topology: 1agg
+  name: llmd-kimivla3b-1agg-sglang-llmd-kimivla3b-intel02-b60-xpu2
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+      - exactly:
+          count: 1
+          deviceClassName: gpu.intel.com
+          selectors:
+          - cel:
+              expression: |
+                device.attributes["gpu.intel.com"].pciAddress == "0000:54:00.0"
+        name: xpu
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  labels:
+    app.kubernetes.io/component: 1agg
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-variant: gpu
+    llm-d.ai/accelerator-vendor: nvidia
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-1agg
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: decode
+    llm-d.ai/topology: 1agg
+  name: llmd-kimivla3b-1agg-sglang-llmd-kimivla3b-intel02-b60-xpu3
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+      - exactly:
+          count: 1
+          deviceClassName: gpu.intel.com
+          selectors:
+          - cel:
+              expression: |
+                device.attributes["gpu.intel.com"].pciAddress == "0000:58:00.0"
+        name: xpu
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  labels:
+    app.kubernetes.io/component: 1agg
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-variant: gpu
+    llm-d.ai/accelerator-vendor: nvidia
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-1agg
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: decode
+    llm-d.ai/topology: 1agg
+  name: llmd-kimivla3b-1agg-sglang-llmd-kimivla3b-super21-h200-gpu7
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+      - exactly:
+          count: 1
+          deviceClassName: gpu.nvidia.com
+          selectors:
+          - cel:
+              expression: |
+                device.attributes["gpu.nvidia.com"]["uuid"] in [
+                  "GPU-5566797f-f7a9-dac4-32c7-f2f0ea80a1f7"
+                ]
+        name: gpu

@@ -1,0 +1,521 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nixl-embedding-transfer-patch
+data:
+  sitecustomize.py: |
+    import importlib.util
+    import os
+
+    def _load_chained_sitecustomize(path):
+        if not os.path.exists(path):
+            return
+        spec = importlib.util.spec_from_file_location(
+            "_llmd_chained_sitecustomize", path
+        )
+        if spec is None or spec.loader is None:
+            return
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+    _load_chained_sitecustomize("/opt/llmd-patches/sitecustomize.py")
+
+    try:
+        from llmd_nixl_embedding_patch import install
+
+        install()
+    except Exception as exc:
+        print(f"[llm-d nixl embedding patch] install failed: {exc}", flush=True)
+
+  llmd_nixl_embedding_patch.py: |
+    import base64
+    import json
+    import logging
+    import os
+    import socket
+    import threading
+    import time
+    import uuid
+
+    import numpy as np
+
+    logger = logging.getLogger(__name__)
+
+    _ENGINE = None
+    _ENGINE_LOCK = threading.Lock()
+    _INSTALLED = False
+
+
+    def _json_env(name, default):
+        raw = os.environ.get(name)
+        if not raw:
+            return default
+        try:
+            value = json.loads(raw)
+        except Exception:
+            print(
+                f"[llm-d nixl embedding patch] ignoring invalid {name}={raw!r}",
+                flush=True,
+            )
+            return default
+        return value if isinstance(value, dict) else default
+
+
+    class NixlEmbeddingEngine:
+        """Small Mooncake-compatible facade backed by NIXL WRITE transfers."""
+
+        def __init__(self, hostname=None, gpu_id=0):
+            from nixl._api import nixl_agent, nixl_agent_config
+
+            self.hostname = hostname or socket.gethostname()
+            self.gpu_id = int(gpu_id or os.environ.get("SGLANG_NIXL_GPU_ID", "0"))
+            self.backend = (
+                os.environ.get("SGLANG_EMBEDDING_NIXL_BACKEND")
+                or os.environ.get("SGLANG_DISAGGREGATION_NIXL_BACKEND")
+                or "UCX"
+            )
+            self.backend_params = _json_env(
+                "SGLANG_EMBEDDING_NIXL_BACKEND_PARAMS",
+                _json_env("SGLANG_DISAGGREGATION_NIXL_BACKEND_PARAMS", {}),
+            )
+            num_threads = int(os.environ.get("SGLANG_EMBEDDING_NIXL_NUM_THREADS", "0"))
+            agent_config = nixl_agent_config(backends=[], num_threads=num_threads)
+            agent_name = (
+                f"llmd-emb-{socket.gethostname()}-{os.getpid()}-"
+                f"{uuid.uuid4().hex[:8]}"
+            )
+            self.agent = nixl_agent(agent_name, agent_config)
+            self.agent.create_backend(self.backend, self.backend_params)
+            self._registered = {}
+            self._remote_agents = set()
+            self._lock = threading.Lock()
+            self.timeout_s = float(os.environ.get("SGLANG_EMBEDDING_NIXL_TIMEOUT", "60"))
+            self.poll_s = float(os.environ.get("SGLANG_EMBEDDING_NIXL_POLL", "0.001"))
+            print(
+                "[llm-d nixl embedding patch] NIXL engine initialized: "
+                f"agent={agent_name} backend={self.backend} gpu_id={self.gpu_id}",
+                flush=True,
+            )
+
+        @property
+        def session_id(self):
+            metadata = self.agent.get_agent_metadata()
+            payload = {
+                "kind": "llmd-nixl-embedding-v1",
+                "agent_name": self.agent.name,
+                "agent_metadata": base64.b64encode(metadata).decode("ascii"),
+                "gpu_id": self._landing_gpu_id(),
+                "mem_type": self._landing_mem_type(),
+            }
+            return json.dumps(payload, separators=(",", ":"))
+
+        def register(self, ptr, nbytes, mem_type="VRAM", gpu_id=None):
+            ptr = int(ptr)
+            nbytes = int(nbytes)
+            gpu_id = self.gpu_id if gpu_id is None else int(gpu_id)
+            if ptr == 0 or nbytes <= 0:
+                return
+            key = (ptr, mem_type)
+            with self._lock:
+                if key in self._registered:
+                    return
+                desc = self.agent.register_memory(
+                    [(ptr, nbytes, gpu_id, "")], mem_type
+                )
+                self._registered[key] = desc
+
+        def deregister(self, ptr):
+            ptr = int(ptr)
+            with self._lock:
+                matches = [key for key in self._registered if key[0] == ptr]
+                descs = [self._registered.pop(key) for key in matches]
+            for desc in descs:
+                self.agent.deregister_memory(desc)
+
+        def mark_landing_memory(self, mem_type, gpu_id=0):
+            self.landing_mem_type = mem_type
+            self.landing_gpu_id = int(gpu_id)
+
+        def _landing_mem_type(self):
+            return getattr(self, "landing_mem_type", "VRAM")
+
+        def _landing_gpu_id(self):
+            return int(getattr(self, "landing_gpu_id", self.gpu_id))
+
+        def _add_remote_from_session(self, session_id):
+            try:
+                payload = json.loads(session_id)
+            except Exception as exc:
+                raise RuntimeError(f"invalid NIXL embedding session_id: {exc}") from exc
+            if payload.get("kind") != "llmd-nixl-embedding-v1":
+                raise RuntimeError(
+                    f"unsupported NIXL embedding session kind: {payload.get('kind')}"
+                )
+            remote_name = payload["agent_name"]
+            remote_metadata = base64.b64decode(payload["agent_metadata"])
+            remote_gpu_id = int(payload.get("gpu_id", 0))
+            remote_mem_type = payload.get("mem_type", "VRAM")
+            with self._lock:
+                if remote_name not in self._remote_agents:
+                    self.agent.add_remote_agent(remote_metadata)
+                    self._remote_agents.add(remote_name)
+            return remote_name, remote_gpu_id, remote_mem_type
+
+        def transfer_sync(
+            self,
+            session_id,
+            src_addr,
+            dst_addr,
+            nbytes,
+            src_mem_type="VRAM",
+            src_gpu_id=None,
+        ):
+            remote_name, remote_gpu_id, remote_mem_type = self._add_remote_from_session(
+                session_id
+            )
+            src_addr = int(src_addr)
+            dst_addr = int(dst_addr)
+            nbytes = int(nbytes)
+            src_gpu_id = self.gpu_id if src_gpu_id is None else int(src_gpu_id)
+            src_reqs = np.array([[src_addr, nbytes, src_gpu_id]], dtype=np.uint64)
+            dst_reqs = np.array([[dst_addr, nbytes, remote_gpu_id]], dtype=np.uint64)
+            transient_desc = self.agent.register_memory(
+                [(src_addr, nbytes, src_gpu_id, "")], src_mem_type
+            )
+            src_descs = self.agent.get_xfer_descs(src_reqs, src_mem_type)
+            dst_descs = self.agent.get_xfer_descs(dst_reqs, remote_mem_type)
+            handle = None
+            try:
+                handle = self.agent.initialize_xfer(
+                    "WRITE", src_descs, dst_descs, remote_name
+                )
+                state = self.agent.transfer(handle)
+                deadline = time.monotonic() + self.timeout_s
+                try:
+                    while state == "PROC":
+                        if time.monotonic() > deadline:
+                            raise TimeoutError(
+                                f"NIXL embedding transfer timed out after "
+                                f"{self.timeout_s}s for {nbytes} bytes"
+                            )
+                        time.sleep(self.poll_s)
+                        state = self.agent.check_xfer_state(handle)
+                    if state != "DONE":
+                        raise RuntimeError(
+                            f"NIXL embedding transfer failed: state={state}"
+                        )
+                finally:
+                    try:
+                        self.agent.release_xfer_handle(handle)
+                    except Exception:
+                        pass
+            finally:
+                self.agent.deregister_memory(transient_desc)
+
+
+    class NixlCPUEmbeddingPool:
+        _ALIGN = 256
+
+        def __init__(self, engine, gpu_id, size_bytes):
+            import torch
+
+            self.engine = engine
+            self.gpu_id = 0
+            self.size_bytes = int(size_bytes)
+            self.buffer = torch.empty(self.size_bytes, dtype=torch.uint8, device="cpu")
+            self.base = self.buffer.data_ptr()
+            self.engine.register(self.base, self.buffer.nbytes, mem_type="DRAM", gpu_id=0)
+            self.engine.mark_landing_memory("DRAM", 0)
+            self._segments_free = [(0, self.size_bytes)]
+            self._inflight = {}
+            self._next_slot_id = 0
+            self._total_inflight = 0
+            self._lock = threading.Lock()
+            self._cond = threading.Condition(self._lock)
+            print(
+                "[llm-d nixl embedding patch] CPU embedding landing pool "
+                f"registered: size={self.size_bytes // (1024 * 1024)}MB "
+                f"base=0x{self.base:x}",
+                flush=True,
+            )
+
+        def alloc(self, nbytes, timeout=60.0):
+            nbytes = int(nbytes)
+            if nbytes > self.size_bytes:
+                return None
+            aligned = (nbytes + self._ALIGN - 1) & ~(self._ALIGN - 1)
+            deadline = time.monotonic() + timeout
+            with self._cond:
+                while True:
+                    slot = self._try_alloc_locked(nbytes, aligned)
+                    if slot is not None:
+                        return slot
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return None
+                    self._cond.wait(timeout=remaining)
+
+        def _try_alloc_locked(self, nbytes, aligned):
+            for i, (off, length) in enumerate(self._segments_free):
+                if length < aligned:
+                    continue
+                if length == aligned:
+                    self._segments_free.pop(i)
+                else:
+                    self._segments_free[i] = (off + aligned, length - aligned)
+                slot_id = self._next_slot_id
+                self._next_slot_id += 1
+                self._inflight[slot_id] = (off, aligned)
+                self._total_inflight += aligned
+                return self.buffer[off : off + nbytes], self.base + off, slot_id
+            return None
+
+        def release(self, slot_id):
+            with self._cond:
+                seg = self._inflight.pop(slot_id, None)
+                if seg is None:
+                    return
+                self._total_inflight -= seg[1]
+                self._segments_free.append(seg)
+                self._segments_free.sort()
+                merged = []
+                for off, length in self._segments_free:
+                    if merged and merged[-1][0] + merged[-1][1] == off:
+                        merged[-1] = (merged[-1][0], merged[-1][1] + length)
+                    else:
+                        merged.append((off, length))
+                self._segments_free = merged
+                self._cond.notify_all()
+
+
+    def _get_engine(hostname=None, gpu_id=0, **_kwargs):
+        global _ENGINE
+        with _ENGINE_LOCK:
+            if _ENGINE is None:
+                _ENGINE = NixlEmbeddingEngine(hostname=hostname, gpu_id=gpu_id)
+            return _ENGINE
+
+
+    def _patch_server_args():
+        from sglang.srt import server_args as sa
+
+        if "nixl" not in sa.ENCODER_TRANSFER_BACKEND_CHOICES:
+            sa.ENCODER_TRANSFER_BACKEND_CHOICES.append("nixl")
+
+        original_post_init = sa.ServerArgs.__post_init__
+        if getattr(original_post_init, "_llmd_nixl_embedding_patch", False):
+            return
+
+        def patched_post_init(self):
+            requested = getattr(self, "encoder_transfer_backend", None)
+            if requested == "nixl":
+                self._llmd_requested_encoder_transfer_backend = "nixl"
+                self.encoder_transfer_backend = "mooncake"
+                print(
+                    "[llm-d nixl embedding patch] "
+                    "remapped encoder_transfer_backend=nixl to "
+                    "SGLang mooncake control path with NIXL data transfer",
+                    flush=True,
+                )
+            return original_post_init(self)
+
+        patched_post_init._llmd_nixl_embedding_patch = True
+        sa.ServerArgs.__post_init__ = patched_post_init
+
+
+    def _patch_mooncake_engine_symbols():
+        modules = [
+            "sglang.srt.distributed.parallel_state",
+            "sglang.srt.disaggregation.encode_server",
+            "sglang.srt.disaggregation.encode_receiver",
+            "sglang.srt.distributed.device_communicators.mooncake_transfer_engine",
+        ]
+        for module_name in modules:
+            try:
+                module = __import__(module_name, fromlist=["_"])
+            except Exception:
+                continue
+            if hasattr(module, "get_mooncake_transfer_engine"):
+                module.get_mooncake_transfer_engine = lambda: _get_engine()
+            if hasattr(module, "init_mooncake_transfer_engine"):
+                module.init_mooncake_transfer_engine = _get_engine
+
+
+    def _patch_encode_receiver_pool():
+        try:
+            from sglang.srt.disaggregation import encode_receiver as er
+        except Exception:
+            return
+        er.MooncakeEmbeddingPool = NixlCPUEmbeddingPool
+
+
+    def _patch_encode_server_send():
+        try:
+            from sglang.srt.disaggregation import encode_server as es
+        except Exception:
+            return
+
+        original_send = es.MMEncoder._send
+        if getattr(original_send, "_llmd_nixl_embedding_patch", False):
+            return
+
+        async def patched_send(
+            self,
+            embedding,
+            mm_data,
+            session_id=None,
+            buffer_address=None,
+            prefill_host=None,
+            embedding_port=None,
+            url=None,
+        ):
+            if not isinstance(getattr(self, "engine", None), NixlEmbeddingEngine):
+                return await original_send(
+                    self,
+                    embedding,
+                    mm_data,
+                    session_id=session_id,
+                    buffer_address=buffer_address,
+                    prefill_host=prefill_host,
+                    embedding_port=embedding_port,
+                    url=url,
+                )
+
+            req_id = mm_data.req_id
+            if req_id in self._forward_ready_events:
+                await self._forward_ready_events[req_id].wait()
+                result = self._forward_results.get(req_id)
+                if result is not None:
+                    if "error" in result:
+                        raise es.InternalError(f"VIT forward failed: {result['error']}")
+                    embedding = result["embedding"]
+                    mm_data.cached_embedding = embedding
+
+            if embedding is None:
+                embedding = mm_data.cached_embedding
+            if embedding is None:
+                raise es.InternalError(
+                    f"No embedding available for NIXL transfer: {req_id}"
+                )
+
+            expected_nbytes = mm_data.shape[0] * mm_data.shape[1] * self._element_size
+            if embedding.nbytes != expected_nbytes:
+                raise es.InternalError(
+                    f"Embedding size mismatch for {req_id}: "
+                    f"actual={embedding.nbytes}, expected={expected_nbytes} "
+                    f"(shape={mm_data.shape}, element_size={self._element_size})"
+                )
+
+            transfer_tensor = embedding
+            src_mem_type = "VRAM"
+            src_gpu_id = self.engine.gpu_id
+            device_type = getattr(getattr(embedding, "device", None), "type", "cpu")
+            if device_type == "cuda":
+                import torch
+
+                torch.cuda.current_stream(embedding.device).synchronize()
+            elif device_type == "xpu":
+                import torch
+
+                try:
+                    torch.xpu.synchronize(embedding.device)
+                except Exception:
+                    torch.xpu.synchronize()
+                transfer_tensor = embedding.detach().contiguous().cpu()
+                src_mem_type = "DRAM"
+                src_gpu_id = 0
+            elif device_type == "cpu":
+                transfer_tensor = embedding.detach().contiguous()
+                src_mem_type = "DRAM"
+                src_gpu_id = 0
+
+            _t_xfer_start = time.monotonic()
+            await es.asyncio.to_thread(
+                self.engine.transfer_sync,
+                session_id,
+                transfer_tensor.data_ptr(),
+                buffer_address,
+                transfer_tensor.nbytes,
+                src_mem_type,
+                src_gpu_id,
+            )
+            xfer_ms = (time.monotonic() - _t_xfer_start) * 1000.0
+            if xfer_ms > 200.0:
+                es.logger.info(
+                    f"[{req_id}] nixl embedding transfer_sync={xfer_ms:.1f}ms "
+                    f"nbytes={transfer_tensor.nbytes} src_mem_type={src_mem_type}"
+                )
+
+            mm_data.embedding = None
+
+            if url is not None:
+                endpoint = es.NetworkAddress.parse(url).to_tcp()
+            else:
+                endpoint = es.NetworkAddress(prefill_host, embedding_port).to_tcp()
+            es.logger.info(f"{endpoint = }")
+
+            new_mm_data = mm_data.copy_without_embedding()
+            serialized_data = es.pickle.dumps(new_mm_data)
+
+            def send_with_socket():
+                sock = self.sync_context.socket(es.zmq.PUSH)
+                es.config_socket(sock, es.zmq.PUSH)
+                try:
+                    sock.connect(endpoint)
+                    sock.send_multipart([serialized_data], copy=False)
+                finally:
+                    sock.close()
+
+            await es.asyncio.get_event_loop().run_in_executor(
+                self.executor, send_with_socket
+            )
+
+        patched_send._llmd_nixl_embedding_patch = True
+        es.MMEncoder._send = patched_send
+
+
+    def _patch_incremental_detokenize_array_ids():
+        try:
+            from sglang.srt.managers import schedule_batch as sb
+        except Exception:
+            return
+
+        original = sb.Req.init_incremental_detokenize
+        if getattr(original, "_llmd_nixl_embedding_patch", False):
+            return
+
+        def patched_init_incremental_detokenize(self):
+            first_iter = self.surr_offset is None or self.read_offset is None
+            output_ids = list(self.output_ids_through_stop)
+
+            if first_iter:
+                self.read_offset = len(self.origin_input_ids_unpadded)
+                self.surr_offset = max(
+                    self.read_offset - sb.INIT_INCREMENTAL_DETOKENIZATION_OFFSET, 0
+                )
+                self.surr_and_decode_ids = (
+                    list(self.origin_input_ids_unpadded[self.surr_offset :])
+                    + output_ids
+                )
+                self.cur_decode_ids_len = len(output_ids)
+            else:
+                self.surr_and_decode_ids.extend(output_ids[self.cur_decode_ids_len :])
+                self.cur_decode_ids_len = len(output_ids)
+
+            return self.surr_and_decode_ids, self.read_offset - self.surr_offset
+
+        patched_init_incremental_detokenize._llmd_nixl_embedding_patch = True
+        sb.Req.init_incremental_detokenize = patched_init_incremental_detokenize
+
+
+    def install():
+        global _INSTALLED
+        if _INSTALLED:
+            return
+        _patch_server_args()
+        _patch_mooncake_engine_symbols()
+        _patch_encode_receiver_pool()
+        _patch_encode_server_send()
+        _patch_incremental_detokenize_array_ids()
+        _INSTALLED = True
+        print("[llm-d nixl embedding patch] installed", flush=True)

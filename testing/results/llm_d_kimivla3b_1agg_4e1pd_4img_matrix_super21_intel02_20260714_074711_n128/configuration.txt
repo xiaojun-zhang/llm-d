@@ -1,0 +1,17 @@
+model=moonshotai/Kimi-VL-A3B-Instruct
+namespace=shared-infra
+gpu_node=sc09super21-h200
+gpu_card=7
+gpu_uuid=GPU-5566797f-f7a9-dac4-32c7-f2f0ea80a1f7
+xpu_node=sc09intel02-b60
+xpu_cards=0,1,2,3
+xpu_pci=0000:18:00.0,0000:1c:00.0,0000:54:00.0,0000:58:00.0
+num_prompts=128
+rates=0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6 1.8 2.0
+image_count=4
+image_resolution=1080p
+random_input_len=128
+random_output_len=16
+max_concurrency=8
+run_1agg_smoke=false
+bench_image=amr-registry.caas.intel.com/taas/scalable-deploy-intel/main_dockerfile.dynamo_gpu:477-e3682ee
