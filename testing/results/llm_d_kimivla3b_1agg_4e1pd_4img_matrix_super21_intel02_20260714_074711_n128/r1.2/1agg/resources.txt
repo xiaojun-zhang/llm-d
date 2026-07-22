@@ -1,0 +1,16 @@
+NAME                                                READY   UP-TO-DATE   AVAILABLE   AGE     CONTAINERS        IMAGES                                                                                            SELECTOR
+deployment.apps/llmd-kimivla3b-1agg-epp             1/1     1            1           8m10s   envoy-proxy,epp   docker.io/envoyproxy/envoy:distroless-v1.33.2,ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0   llm-d-router-standalone=llmd-kimivla3b-1agg-epp
+deployment.apps/llmd-kimivla3b-1agg-sglang-decode   1/1     1            1           8m9s    modelserver       amr-registry.caas.intel.com/taas/scalable-deploy-intel/main_dockerfile.dynamo_gpu:477-e3682ee     app.kubernetes.io/component=1agg,app.kubernetes.io/name=llmd-kimivla3b-epd,llm-d.ai/accelerator-variant=gpu,llm-d.ai/accelerator-vendor=nvidia,llm-d.ai/engine-type=sglang,llm-d.ai/guide=kimivla3b-epd-1agg,llm-d.ai/model=kimivla3b,llm-d.ai/role=decode,llm-d.ai/topology=1agg
+
+NAME                              TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)                    AGE     SELECTOR
+service/llmd-kimivla3b-1agg-epp   ClusterIP   192.169.0.90   <none>        9002/TCP,9090/TCP,80/TCP   8m10s   llm-d-router-standalone=llmd-kimivla3b-1agg-epp
+
+NAME                                                                                         STATE                AGE
+resourceclaim.resource.k8s.io/llmd-kimivla3b-1agg-sglang-decode-56df684c54-w6htf-gpu-2gs27   allocated,reserved   8m9s
+
+NAME                                                                                                AGE
+resourceclaimtemplate.resource.k8s.io/llmd-kimivla3b-1agg-sglang-llmd-kimivla3b-intel02-b60-xpu0    8m9s
+resourceclaimtemplate.resource.k8s.io/llmd-kimivla3b-1agg-sglang-llmd-kimivla3b-intel02-b60-xpu1    8m9s
+resourceclaimtemplate.resource.k8s.io/llmd-kimivla3b-1agg-sglang-llmd-kimivla3b-intel02-b60-xpu2    8m9s
+resourceclaimtemplate.resource.k8s.io/llmd-kimivla3b-1agg-sglang-llmd-kimivla3b-intel02-b60-xpu3    8m9s
+resourceclaimtemplate.resource.k8s.io/llmd-kimivla3b-1agg-sglang-llmd-kimivla3b-super21-h200-gpu7   8m9s

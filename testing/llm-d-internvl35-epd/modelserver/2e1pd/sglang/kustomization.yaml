@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: shared-infra
+
+resources:
+  - ../../../../../guides/recipes/modelserver/base/single-host/default
+  - ../../common
+  - encode-0-deployment.yaml
+  - encode-1-deployment.yaml
+  - encode-services.yaml
+
+namePrefix: llmd-internvl35-2e1pd-sglang-
+
+images:
+  - name: REPLACE_MODEL_SERVER_IMAGE
+    newName: amr-registry.caas.intel.com/taas/scalable-deploy-intel/main_dockerfile.dynamo_gpu
+    newTag: 477-e3682ee
+
+labels:
+  - pairs:
+      app.kubernetes.io/name: llmd-internvl35-epd
+      llm-d.ai/guide: internvl35-epd-2e1pd
+      llm-d.ai/model: internvl35-30b-a3b
+      llm-d.ai/topology: 2e1pd
+      llm-d.ai/engine-type: sglang
+      llm-d.ai/accelerator-topology: h200-b70
+    includeSelectors: true
+    includeTemplates: true
+
+patches:
+  - path: patch-decode.yaml
+    target:
+      kind: Deployment
+      name: decode

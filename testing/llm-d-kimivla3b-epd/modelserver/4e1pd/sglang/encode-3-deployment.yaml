@@ -1,0 +1,148 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: encode-3
+  labels:
+    app.kubernetes.io/component: encode-3
+    llm-d.ai/role: encode
+    llm-d.ai/accelerator-variant: xpu
+    llm-d.ai/accelerator-vendor: intel
+spec:
+  progressDeadlineSeconds: 3600
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: encode-3
+      llm-d.ai/role: encode
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: encode-3
+        llm-d.ai/role: encode
+        llm-d.ai/accelerator-variant: xpu
+        llm-d.ai/accelerator-vendor: intel
+    spec:
+      serviceAccountName: sa
+      nodeSelector:
+        kubernetes.io/hostname: sc09intel02-b60
+      imagePullSecrets:
+        - name: amr-caas-registry
+        - name: amr-idc-registry
+        - name: amr-idc-registry-updated
+      resourceClaims:
+        - name: xpu
+          resourceClaimTemplateName: llmd-kimivla3b-intel02-b60-xpu3
+      securityContext:
+        fsGroup: 1000
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: modelserver
+          image: amr-registry.caas.intel.com/taas/scalable-deploy-intel/main_dockerfile.dynamo_xpu:509-5c58c0e
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-lc"]
+          args:
+            - |
+              python3 /opt/sglang-runtime-patches/patch_kimi_epd_runtime.py
+              exec python3 -m sglang.launch_server \
+                --model-path=/mnt/weka/data/llm-d-models-pv/hub/models--moonshotai--Kimi-VL-A3B-Instruct/snapshots/main \
+                --served-model-name=moonshotai/Kimi-VL-A3B-Instruct \
+                --host=0.0.0.0 \
+                --port=8000 \
+                --trust-remote-code \
+                --enable-multimodal \
+                --encoder-only \
+                --encoder-transfer-backend=zmq_to_scheduler \
+                --skip-tokenizer-init \
+                --device=xpu \
+                --tensor-parallel-size=1 \
+                --mem-fraction-static=0.70 \
+                --page-size=16 \
+                --mm-attention-backend=xpu_attn \
+                --log-level=info \
+                --enable-metrics \
+                --uvicorn-access-log-exclude-prefixes=/metrics
+          envFrom:
+            - secretRef:
+                name: hf-token-secret
+          env:
+            - name: ZE_AFFINITY_MASK
+              value: "0"
+            - name: ONEAPI_DEVICE_SELECTOR
+              value: level_zero:0
+            - name: SYCL_CACHE_PERSISTENT
+              value: "1"
+            - name: HF_HOME
+              value: /mnt/weka/data/llm-d-models-pv
+            - name: HF_HUB_CACHE
+              value: /mnt/weka/data/llm-d-models-pv/hub
+            - name: HF_HUB_OFFLINE
+              value: "1"
+            - name: TRANSFORMERS_CACHE
+              value: /mnt/weka/data/llm-d-models-pv/hub
+            - name: HF_MODULES_CACHE
+              value: /tmp/hf_modules
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: http_proxy
+              value: http://proxy-dmz.intel.com:911
+            - name: https_proxy
+              value: http://proxy-dmz.intel.com:912
+            - name: no_proxy
+              value: 127.0.0.1,localhost,.svc,.cluster.local,172.26.0.0/16,10.66.0.0/16,10.210.0.0/16
+          ports:
+            - name: modelserver
+              containerPort: 8000
+              protocol: TCP
+          resources:
+            claims:
+              - name: xpu
+            requests:
+              cpu: "8"
+              memory: 96Gi
+            limits:
+              cpu: "32"
+              memory: 160Gi
+          volumeMounts:
+            - name: kimi-epd-runtime-patch
+              mountPath: /opt/sglang-runtime-patches
+              readOnly: true
+            - name: model-cache
+              mountPath: /mnt/weka/data/llm-d-models-pv
+              readOnly: true
+            - name: shm
+              mountPath: /dev/shm
+          startupProbe:
+            tcpSocket:
+              port: modelserver
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 30
+            failureThreshold: 180
+          readinessProbe:
+            tcpSocket:
+              port: modelserver
+            periodSeconds: 10
+            timeoutSeconds: 30
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: modelserver
+            initialDelaySeconds: 1800
+            periodSeconds: 30
+            timeoutSeconds: 30
+            failureThreshold: 10
+      volumes:
+        - name: kimi-epd-runtime-patch
+          configMap:
+            name: kimi-epd-runtime-patch
+            defaultMode: 0555
+        - name: model-cache
+          hostPath:
+            path: /mnt/weka/data/llm-d-models-pv
+            type: Directory
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Gi

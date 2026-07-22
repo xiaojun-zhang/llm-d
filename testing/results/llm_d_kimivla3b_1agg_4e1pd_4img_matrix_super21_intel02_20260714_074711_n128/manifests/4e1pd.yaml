@@ -1,0 +1,1318 @@
+apiVersion: v1
+automountServiceAccountToken: false
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/topology: 4e1pd
+  name: llmd-kimivla3b-4e1pd-sglang-sa
+  namespace: shared-infra
+---
+apiVersion: v1
+data:
+  patch_kimi_epd_runtime.py: |
+    #!/usr/bin/env python3
+    """Patch SGLang Kimi-VL E/PD encoder helpers at container startup.
+
+    The SGLang image used for this harness treats Kimi image grids as Qwen-style
+    ``(t, h, w)`` in the batched encoder path. Kimi-VL emits ``(h, w)`` grids, so
+    the encoder crashes with ``index 2 is out of bounds`` before it can return
+    precomputed image embeddings to the decode worker.
+    """
+
+    from pathlib import Path
+
+
+    TARGET = Path("/opt/sglang/python/sglang/srt/disaggregation/encode_server.py")
+
+
+    def replace_once(text: str, old: str, new: str, label: str) -> str:
+        if new in text:
+            return text
+        if old not in text:
+            raise RuntimeError(f"could not find patch target: {label}")
+        return text.replace(old, new, 1)
+
+
+    def main() -> None:
+        text = TARGET.read_text()
+
+        text = replace_once(
+            text,
+            """    if (model_type or "").lower() in [
+            "kimi_k25",
+            "kimi_vl",
+        ] and modality == Modality.IMAGE:
+            attrs = ("grid_thws", "image_grid_thw", "image_grid_hws")
+    """,
+            """    if modality == Modality.IMAGE:
+            model_type_l = (model_type or "").lower()
+            if model_type_l == "kimi_vl":
+                attrs = ("image_grid_hws", "image_grid_thw", "grid_thws")
+            elif model_type_l == "kimi_k25":
+                attrs = ("grid_thws", "image_grid_thw", "image_grid_hws")
+    """,
+            "Kimi grid attr preference",
+        )
+
+        text = replace_once(
+            text,
+            """    for attr in attrs:
+            if attr in mm_inputs and mm_inputs[attr] is not None:
+                return mm_inputs[attr]
+        raise ValueError(f"Grid dim ({_mm_grid_attrs[modality]}) not found in {mm_inputs}")
+    """,
+            """    for attr in attrs:
+            if attr in mm_inputs and mm_inputs[attr] is not None:
+                return _convert(mm_inputs[attr])
+        raise ValueError(f"Grid dim ({_mm_grid_attrs[modality]}) not found in {mm_inputs}")
+    """,
+            "safe grid metadata serialization",
+        )
+
+        text = replace_once(
+            text,
+            """    def get_num_patches(
+            self, grid: Union[torch.Tensor, List[int]], modality: Modality
+        ) -> int:
+            \"\"\"Calculate number of raw patches (before merge/sampling). Used for pixel_values slicing.\"\"\"
+            if modality == Modality.AUDIO:
+                return int(grid.item())
+            else:
+                return int(grid[0] * grid[1] * grid[2])
+
+        def _kimi_tokens_from_patch_grid(self, grid: Union[torch.Tensor, List[int]]) -> int:
+            \"\"\"MoonViT + tpool: output len is (h//mh)*(w//mw); temporal dim is pooled (not t*h*w/merge^2).\"\"\"
+            if isinstance(grid, torch.Tensor):
+                flat = grid.flatten()
+                _t, h, w = (int(x) for x in flat[:3].tolist())
+            else:
+                _t, h, w = int(grid[0]), int(grid[1]), int(grid[2])
+            merge_h, merge_w = self.model_config.hf_config.vision_config.merge_kernel_size
+            return (h * w) // (merge_h * merge_w)
+    """,
+            """    def get_num_patches(
+            self, grid: Union[torch.Tensor, List[int]], modality: Modality
+        ) -> int:
+            \"\"\"Calculate number of raw patches (before merge/sampling). Used for pixel_values slicing.\"\"\"
+            if modality == Modality.AUDIO:
+                return int(grid.item())
+            if (
+                self.model_type in ["kimi_k25", "kimi_vl"]
+                and modality == Modality.IMAGE
+            ):
+                h, w = self._kimi_hw_from_grid(grid)
+                return h * w
+            return int(grid[0] * grid[1] * grid[2])
+
+        def _kimi_hw_from_grid(self, grid: Union[torch.Tensor, List[int]]) -> tuple[int, int]:
+            \"\"\"Return Kimi image grid (h, w), accepting either (h, w) or (t, h, w).\"\"\"
+            if isinstance(grid, torch.Tensor):
+                vals = grid.flatten().tolist()
+            elif isinstance(grid, np.ndarray):
+                vals = grid.reshape(-1).tolist()
+            else:
+                vals = list(np.array(grid).reshape(-1).tolist())
+            if len(vals) >= 3:
+                h, w = vals[-2], vals[-1]
+            elif len(vals) == 2:
+                h, w = vals
+            else:
+                raise ValueError(
+                    f"Invalid Kimi image grid metadata: {vals}; expected [h,w] or [t,h,w]"
+                )
+            return int(h), int(w)
+
+        def _kimi_tokens_from_patch_grid(self, grid: Union[torch.Tensor, List[int]]) -> int:
+            \"\"\"MoonViT + tpool: output len is (h//mh)*(w//mw); temporal dim is pooled (not t*h*w/merge^2).\"\"\"
+            h, w = self._kimi_hw_from_grid(grid)
+            merge_h, merge_w = self.model_config.hf_config.vision_config.merge_kernel_size
+            return (h * w) // (merge_h * merge_w)
+    """,
+            "Kimi 2D grid patch/token counting",
+        )
+
+        TARGET.write_text(text)
+        print(f"patched {TARGET} for Kimi-VL E/PD 2D image grids")
+
+
+    if __name__ == "__main__":
+        main()
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/topology: 4e1pd
+  name: llmd-kimivla3b-4e1pd-sglang-kimi-epd-runtime-patch
+  namespace: shared-infra
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: encode-0
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: encode
+    llm-d.ai/topology: 4e1pd
+  name: llmd-kimivla3b-4e1pd-sglang-encode-0
+  namespace: shared-infra
+spec:
+  ports:
+  - name: http
+    port: 8000
+    targetPort: modelserver
+  selector:
+    app.kubernetes.io/component: encode-0
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: encode
+    llm-d.ai/topology: 4e1pd
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: encode-1
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: encode
+    llm-d.ai/topology: 4e1pd
+  name: llmd-kimivla3b-4e1pd-sglang-encode-1
+  namespace: shared-infra
+spec:
+  ports:
+  - name: http
+    port: 8000
+    targetPort: modelserver
+  selector:
+    app.kubernetes.io/component: encode-1
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: encode
+    llm-d.ai/topology: 4e1pd
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: encode-2
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: encode
+    llm-d.ai/topology: 4e1pd
+  name: llmd-kimivla3b-4e1pd-sglang-encode-2
+  namespace: shared-infra
+spec:
+  ports:
+  - name: http
+    port: 8000
+    targetPort: modelserver
+  selector:
+    app.kubernetes.io/component: encode-2
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: encode
+    llm-d.ai/topology: 4e1pd
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: encode-3
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: encode
+    llm-d.ai/topology: 4e1pd
+  name: llmd-kimivla3b-4e1pd-sglang-encode-3
+  namespace: shared-infra
+spec:
+  ports:
+  - name: http
+    port: 8000
+    targetPort: modelserver
+  selector:
+    app.kubernetes.io/component: encode-3
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: encode
+    llm-d.ai/topology: 4e1pd
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: pd
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/accelerator-variant: gpu
+    llm-d.ai/accelerator-vendor: nvidia
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: decode
+    llm-d.ai/topology: 4e1pd
+  name: llmd-kimivla3b-4e1pd-sglang-decode
+  namespace: shared-infra
+spec:
+  progressDeadlineSeconds: 3600
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: pd
+      app.kubernetes.io/name: llmd-kimivla3b-epd
+      llm-d.ai/accelerator-topology: h200-b70
+      llm-d.ai/engine-type: sglang
+      llm-d.ai/guide: kimivla3b-epd-4e1pd
+      llm-d.ai/model: kimivla3b
+      llm-d.ai/role: decode
+      llm-d.ai/topology: 4e1pd
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: pd
+        app.kubernetes.io/name: llmd-kimivla3b-epd
+        llm-d.ai/accelerator-topology: h200-b70
+        llm-d.ai/accelerator-variant: gpu
+        llm-d.ai/accelerator-vendor: nvidia
+        llm-d.ai/engine-type: sglang
+        llm-d.ai/guide: kimivla3b-epd-4e1pd
+        llm-d.ai/model: kimivla3b
+        llm-d.ai/role: decode
+        llm-d.ai/topology: 4e1pd
+    spec:
+      containers:
+      - args:
+        - |
+          exec python3 -m sglang.launch_server \
+            --model-path=/mnt/weka/data/llm-d-models-pv/hub/models--moonshotai--Kimi-VL-A3B-Instruct/snapshots/main \
+            --served-model-name=moonshotai/Kimi-VL-A3B-Instruct \
+            --host=0.0.0.0 \
+            --port=8200 \
+            --trust-remote-code \
+            --enable-multimodal \
+            --skip-server-warmup \
+            --language-only \
+            --encoder-transfer-backend=zmq_to_scheduler \
+            --encoder-urls \
+            http://llmd-kimivla3b-4e1pd-sglang-encode-0.shared-infra.svc.cluster.local:8000 \
+            http://llmd-kimivla3b-4e1pd-sglang-encode-1.shared-infra.svc.cluster.local:8000 \
+            http://llmd-kimivla3b-4e1pd-sglang-encode-2.shared-infra.svc.cluster.local:8000 \
+            http://llmd-kimivla3b-4e1pd-sglang-encode-3.shared-infra.svc.cluster.local:8000 \
+            --dtype=auto \
+            --kv-cache-dtype=fp8_e4m3 \
+            --tensor-parallel-size=1 \
+            --mem-fraction-static=0.80 \
+            --prefill-max-requests=4 \
+            --max-running-requests=32 \
+            --chunked-prefill-size=65536 \
+            --max-prefill-tokens=65536 \
+            --max-total-tokens=250000 \
+            --disable-cuda-graph \
+            --page-size=16 \
+            --disable-radix-cache \
+            --log-level=info \
+            --enable-metrics \
+            --uvicorn-access-log-exclude-prefixes=/metrics
+        command:
+        - /bin/sh
+        - -lc
+        env:
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+        - name: SGLANG_ENCODER_BOOTSTRAP_HEALTH_CHECK_INTERVAL
+          value: "0"
+        - name: HF_HOME
+          value: /mnt/weka/data/llm-d-models-pv
+        - name: HF_HUB_CACHE
+          value: /mnt/weka/data/llm-d-models-pv/hub
+        - name: HF_HUB_OFFLINE
+          value: "1"
+        - name: TRANSFORMERS_CACHE
+          value: /mnt/weka/data/llm-d-models-pv/hub
+        - name: HF_MODULES_CACHE
+          value: /tmp/hf_modules
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: http_proxy
+          value: http://proxy-dmz.intel.com:911
+        - name: https_proxy
+          value: http://proxy-dmz.intel.com:912
+        - name: no_proxy
+          value: 127.0.0.1,localhost,.svc,.cluster.local,172.26.0.0/16,10.66.0.0/16,10.210.0.0/16
+        envFrom:
+        - secretRef:
+            name: hf-token-secret
+        image: amr-registry.caas.intel.com/taas/scalable-deploy-intel/main_dockerfile.dynamo_gpu:477-e3682ee
+        livenessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /v1/models
+            port: modelserver
+          initialDelaySeconds: 1800
+          periodSeconds: 30
+          timeoutSeconds: 30
+        name: modelserver
+        ports:
+        - containerPort: 8200
+          name: modelserver
+          protocol: TCP
+        - containerPort: 5600
+          name: nixl
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 6
+          httpGet:
+            path: /v1/models
+            port: modelserver
+          periodSeconds: 10
+          timeoutSeconds: 30
+        resources:
+          claims:
+          - name: gpu
+          limits:
+            cpu: "32"
+            memory: 160Gi
+          requests:
+            cpu: "16"
+            memory: 96Gi
+        startupProbe:
+          failureThreshold: 180
+          httpGet:
+            path: /v1/models
+            port: modelserver
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 30
+        volumeMounts:
+        - mountPath: /mnt/weka/data/llm-d-models-pv
+          name: model-cache
+          readOnly: true
+        - mountPath: /dev/shm
+          name: shm
+      imagePullSecrets:
+      - name: amr-caas-registry
+      - name: amr-idc-registry
+      - name: amr-idc-registry-updated
+      initContainers:
+      - args:
+        - --port=8000
+        - --vllm-port=8200
+        - --kv-connector=nixlv2
+        - --zap-log-level=1
+        - --secure-proxy=false
+        image: ghcr.io/llm-d/llm-d-router-disagg-sidecar:v0.9.0
+        imagePullPolicy: Always
+        name: routing-proxy
+        ports:
+        - containerPort: 8000
+          name: sidecar
+          protocol: TCP
+        resources: {}
+        restartPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+      - args:
+        - |
+          set -eu
+          for host in \
+            llmd-kimivla3b-4e1pd-sglang-encode-0.shared-infra.svc.cluster.local \
+            llmd-kimivla3b-4e1pd-sglang-encode-1.shared-infra.svc.cluster.local \
+            llmd-kimivla3b-4e1pd-sglang-encode-2.shared-infra.svc.cluster.local \
+            llmd-kimivla3b-4e1pd-sglang-encode-3.shared-infra.svc.cluster.local
+          do
+            echo "waiting for ${host}:8000"
+            i=0
+            until python3 - "${host}" <<'PY'
+          import sys
+          import socket
+
+          try:
+              with socket.create_connection((sys.argv[1], 8000), timeout=5):
+                  raise SystemExit(0)
+          except Exception:
+              raise SystemExit(1)
+          PY
+            do
+              i=$((i + 1))
+              if [ "${i}" -ge 360 ]; then
+                echo "timed out waiting for ${host}:8000" >&2
+                exit 1
+              fi
+              sleep 5
+            done
+          done
+          echo "all encoder ports are reachable"
+        command:
+        - /bin/sh
+        - -lc
+        image: amr-registry.caas.intel.com/taas/scalable-deploy-intel/main_dockerfile.dynamo_gpu:477-e3682ee
+        imagePullPolicy: IfNotPresent
+        name: wait-encoders
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: "1"
+            memory: 1Gi
+      nodeSelector:
+        kubernetes.io/hostname: sc09super21-h200
+      resourceClaims:
+      - name: gpu
+        resourceClaimTemplateName: llmd-kimivla3b-4e1pd-sglang-llmd-kimivla3b-super21-h200-gpu7
+      securityContext:
+        fsGroup: 1000
+      serviceAccountName: llmd-kimivla3b-4e1pd-sglang-sa
+      terminationGracePeriodSeconds: 120
+      volumes:
+      - hostPath:
+          path: /mnt/weka/data/llm-d-models-pv
+          type: Directory
+        name: model-cache
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 64Gi
+        name: shm
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: encode-0
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/accelerator-variant: xpu
+    llm-d.ai/accelerator-vendor: intel
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: encode
+    llm-d.ai/topology: 4e1pd
+  name: llmd-kimivla3b-4e1pd-sglang-encode-0
+  namespace: shared-infra
+spec:
+  progressDeadlineSeconds: 3600
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: encode-0
+      app.kubernetes.io/name: llmd-kimivla3b-epd
+      llm-d.ai/accelerator-topology: h200-b70
+      llm-d.ai/engine-type: sglang
+      llm-d.ai/guide: kimivla3b-epd-4e1pd
+      llm-d.ai/model: kimivla3b
+      llm-d.ai/role: encode
+      llm-d.ai/topology: 4e1pd
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: encode-0
+        app.kubernetes.io/name: llmd-kimivla3b-epd
+        llm-d.ai/accelerator-topology: h200-b70
+        llm-d.ai/accelerator-variant: xpu
+        llm-d.ai/accelerator-vendor: intel
+        llm-d.ai/engine-type: sglang
+        llm-d.ai/guide: kimivla3b-epd-4e1pd
+        llm-d.ai/model: kimivla3b
+        llm-d.ai/role: encode
+        llm-d.ai/topology: 4e1pd
+    spec:
+      containers:
+      - args:
+        - |
+          python3 /opt/sglang-runtime-patches/patch_kimi_epd_runtime.py
+          exec python3 -m sglang.launch_server \
+            --model-path=/mnt/weka/data/llm-d-models-pv/hub/models--moonshotai--Kimi-VL-A3B-Instruct/snapshots/main \
+            --served-model-name=moonshotai/Kimi-VL-A3B-Instruct \
+            --host=0.0.0.0 \
+            --port=8000 \
+            --trust-remote-code \
+            --enable-multimodal \
+            --encoder-only \
+            --encoder-transfer-backend=zmq_to_scheduler \
+            --skip-tokenizer-init \
+            --device=xpu \
+            --tensor-parallel-size=1 \
+            --mem-fraction-static=0.70 \
+            --page-size=16 \
+            --mm-attention-backend=xpu_attn \
+            --log-level=info \
+            --enable-metrics \
+            --uvicorn-access-log-exclude-prefixes=/metrics
+        command:
+        - /bin/sh
+        - -lc
+        env:
+        - name: ZE_AFFINITY_MASK
+          value: "0"
+        - name: ONEAPI_DEVICE_SELECTOR
+          value: level_zero:0
+        - name: SYCL_CACHE_PERSISTENT
+          value: "1"
+        - name: HF_HOME
+          value: /mnt/weka/data/llm-d-models-pv
+        - name: HF_HUB_CACHE
+          value: /mnt/weka/data/llm-d-models-pv/hub
+        - name: HF_HUB_OFFLINE
+          value: "1"
+        - name: TRANSFORMERS_CACHE
+          value: /mnt/weka/data/llm-d-models-pv/hub
+        - name: HF_MODULES_CACHE
+          value: /tmp/hf_modules
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: http_proxy
+          value: http://proxy-dmz.intel.com:911
+        - name: https_proxy
+          value: http://proxy-dmz.intel.com:912
+        - name: no_proxy
+          value: 127.0.0.1,localhost,.svc,.cluster.local,172.26.0.0/16,10.66.0.0/16,10.210.0.0/16
+        envFrom:
+        - secretRef:
+            name: hf-token-secret
+        image: amr-registry.caas.intel.com/taas/scalable-deploy-intel/main_dockerfile.dynamo_xpu:509-5c58c0e
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 10
+          initialDelaySeconds: 1800
+          periodSeconds: 30
+          tcpSocket:
+            port: modelserver
+          timeoutSeconds: 30
+        name: modelserver
+        ports:
+        - containerPort: 8000
+          name: modelserver
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 6
+          periodSeconds: 10
+          tcpSocket:
+            port: modelserver
+          timeoutSeconds: 30
+        resources:
+          claims:
+          - name: xpu
+          limits:
+            cpu: "32"
+            memory: 160Gi
+          requests:
+            cpu: "8"
+            memory: 96Gi
+        startupProbe:
+          failureThreshold: 180
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          tcpSocket:
+            port: modelserver
+          timeoutSeconds: 30
+        volumeMounts:
+        - mountPath: /opt/sglang-runtime-patches
+          name: kimi-epd-runtime-patch
+          readOnly: true
+        - mountPath: /mnt/weka/data/llm-d-models-pv
+          name: model-cache
+          readOnly: true
+        - mountPath: /dev/shm
+          name: shm
+      imagePullSecrets:
+      - name: amr-caas-registry
+      - name: amr-idc-registry
+      - name: amr-idc-registry-updated
+      nodeSelector:
+        kubernetes.io/hostname: sc09intel02-b60
+      resourceClaims:
+      - name: xpu
+        resourceClaimTemplateName: llmd-kimivla3b-4e1pd-sglang-llmd-kimivla3b-intel02-b60-xpu0
+      securityContext:
+        fsGroup: 1000
+      serviceAccountName: llmd-kimivla3b-4e1pd-sglang-sa
+      terminationGracePeriodSeconds: 120
+      volumes:
+      - configMap:
+          defaultMode: 365
+          name: llmd-kimivla3b-4e1pd-sglang-kimi-epd-runtime-patch
+        name: kimi-epd-runtime-patch
+      - hostPath:
+          path: /mnt/weka/data/llm-d-models-pv
+          type: Directory
+        name: model-cache
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi
+        name: shm
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: encode-1
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/accelerator-variant: xpu
+    llm-d.ai/accelerator-vendor: intel
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: encode
+    llm-d.ai/topology: 4e1pd
+  name: llmd-kimivla3b-4e1pd-sglang-encode-1
+  namespace: shared-infra
+spec:
+  progressDeadlineSeconds: 3600
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: encode-1
+      app.kubernetes.io/name: llmd-kimivla3b-epd
+      llm-d.ai/accelerator-topology: h200-b70
+      llm-d.ai/engine-type: sglang
+      llm-d.ai/guide: kimivla3b-epd-4e1pd
+      llm-d.ai/model: kimivla3b
+      llm-d.ai/role: encode
+      llm-d.ai/topology: 4e1pd
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: encode-1
+        app.kubernetes.io/name: llmd-kimivla3b-epd
+        llm-d.ai/accelerator-topology: h200-b70
+        llm-d.ai/accelerator-variant: xpu
+        llm-d.ai/accelerator-vendor: intel
+        llm-d.ai/engine-type: sglang
+        llm-d.ai/guide: kimivla3b-epd-4e1pd
+        llm-d.ai/model: kimivla3b
+        llm-d.ai/role: encode
+        llm-d.ai/topology: 4e1pd
+    spec:
+      containers:
+      - args:
+        - |
+          python3 /opt/sglang-runtime-patches/patch_kimi_epd_runtime.py
+          exec python3 -m sglang.launch_server \
+            --model-path=/mnt/weka/data/llm-d-models-pv/hub/models--moonshotai--Kimi-VL-A3B-Instruct/snapshots/main \
+            --served-model-name=moonshotai/Kimi-VL-A3B-Instruct \
+            --host=0.0.0.0 \
+            --port=8000 \
+            --trust-remote-code \
+            --enable-multimodal \
+            --encoder-only \
+            --encoder-transfer-backend=zmq_to_scheduler \
+            --skip-tokenizer-init \
+            --device=xpu \
+            --tensor-parallel-size=1 \
+            --mem-fraction-static=0.70 \
+            --page-size=16 \
+            --mm-attention-backend=xpu_attn \
+            --log-level=info \
+            --enable-metrics \
+            --uvicorn-access-log-exclude-prefixes=/metrics
+        command:
+        - /bin/sh
+        - -lc
+        env:
+        - name: ZE_AFFINITY_MASK
+          value: "0"
+        - name: ONEAPI_DEVICE_SELECTOR
+          value: level_zero:0
+        - name: SYCL_CACHE_PERSISTENT
+          value: "1"
+        - name: HF_HOME
+          value: /mnt/weka/data/llm-d-models-pv
+        - name: HF_HUB_CACHE
+          value: /mnt/weka/data/llm-d-models-pv/hub
+        - name: HF_HUB_OFFLINE
+          value: "1"
+        - name: TRANSFORMERS_CACHE
+          value: /mnt/weka/data/llm-d-models-pv/hub
+        - name: HF_MODULES_CACHE
+          value: /tmp/hf_modules
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: http_proxy
+          value: http://proxy-dmz.intel.com:911
+        - name: https_proxy
+          value: http://proxy-dmz.intel.com:912
+        - name: no_proxy
+          value: 127.0.0.1,localhost,.svc,.cluster.local,172.26.0.0/16,10.66.0.0/16,10.210.0.0/16
+        envFrom:
+        - secretRef:
+            name: hf-token-secret
+        image: amr-registry.caas.intel.com/taas/scalable-deploy-intel/main_dockerfile.dynamo_xpu:509-5c58c0e
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 10
+          initialDelaySeconds: 1800
+          periodSeconds: 30
+          tcpSocket:
+            port: modelserver
+          timeoutSeconds: 30
+        name: modelserver
+        ports:
+        - containerPort: 8000
+          name: modelserver
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 6
+          periodSeconds: 10
+          tcpSocket:
+            port: modelserver
+          timeoutSeconds: 30
+        resources:
+          claims:
+          - name: xpu
+          limits:
+            cpu: "32"
+            memory: 160Gi
+          requests:
+            cpu: "8"
+            memory: 96Gi
+        startupProbe:
+          failureThreshold: 180
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          tcpSocket:
+            port: modelserver
+          timeoutSeconds: 30
+        volumeMounts:
+        - mountPath: /opt/sglang-runtime-patches
+          name: kimi-epd-runtime-patch
+          readOnly: true
+        - mountPath: /mnt/weka/data/llm-d-models-pv
+          name: model-cache
+          readOnly: true
+        - mountPath: /dev/shm
+          name: shm
+      imagePullSecrets:
+      - name: amr-caas-registry
+      - name: amr-idc-registry
+      - name: amr-idc-registry-updated
+      nodeSelector:
+        kubernetes.io/hostname: sc09intel02-b60
+      resourceClaims:
+      - name: xpu
+        resourceClaimTemplateName: llmd-kimivla3b-4e1pd-sglang-llmd-kimivla3b-intel02-b60-xpu1
+      securityContext:
+        fsGroup: 1000
+      serviceAccountName: llmd-kimivla3b-4e1pd-sglang-sa
+      terminationGracePeriodSeconds: 120
+      volumes:
+      - configMap:
+          defaultMode: 365
+          name: llmd-kimivla3b-4e1pd-sglang-kimi-epd-runtime-patch
+        name: kimi-epd-runtime-patch
+      - hostPath:
+          path: /mnt/weka/data/llm-d-models-pv
+          type: Directory
+        name: model-cache
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi
+        name: shm
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: encode-2
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/accelerator-variant: xpu
+    llm-d.ai/accelerator-vendor: intel
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: encode
+    llm-d.ai/topology: 4e1pd
+  name: llmd-kimivla3b-4e1pd-sglang-encode-2
+  namespace: shared-infra
+spec:
+  progressDeadlineSeconds: 3600
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: encode-2
+      app.kubernetes.io/name: llmd-kimivla3b-epd
+      llm-d.ai/accelerator-topology: h200-b70
+      llm-d.ai/engine-type: sglang
+      llm-d.ai/guide: kimivla3b-epd-4e1pd
+      llm-d.ai/model: kimivla3b
+      llm-d.ai/role: encode
+      llm-d.ai/topology: 4e1pd
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: encode-2
+        app.kubernetes.io/name: llmd-kimivla3b-epd
+        llm-d.ai/accelerator-topology: h200-b70
+        llm-d.ai/accelerator-variant: xpu
+        llm-d.ai/accelerator-vendor: intel
+        llm-d.ai/engine-type: sglang
+        llm-d.ai/guide: kimivla3b-epd-4e1pd
+        llm-d.ai/model: kimivla3b
+        llm-d.ai/role: encode
+        llm-d.ai/topology: 4e1pd
+    spec:
+      containers:
+      - args:
+        - |
+          python3 /opt/sglang-runtime-patches/patch_kimi_epd_runtime.py
+          exec python3 -m sglang.launch_server \
+            --model-path=/mnt/weka/data/llm-d-models-pv/hub/models--moonshotai--Kimi-VL-A3B-Instruct/snapshots/main \
+            --served-model-name=moonshotai/Kimi-VL-A3B-Instruct \
+            --host=0.0.0.0 \
+            --port=8000 \
+            --trust-remote-code \
+            --enable-multimodal \
+            --encoder-only \
+            --encoder-transfer-backend=zmq_to_scheduler \
+            --skip-tokenizer-init \
+            --device=xpu \
+            --tensor-parallel-size=1 \
+            --mem-fraction-static=0.70 \
+            --page-size=16 \
+            --mm-attention-backend=xpu_attn \
+            --log-level=info \
+            --enable-metrics \
+            --uvicorn-access-log-exclude-prefixes=/metrics
+        command:
+        - /bin/sh
+        - -lc
+        env:
+        - name: ZE_AFFINITY_MASK
+          value: "0"
+        - name: ONEAPI_DEVICE_SELECTOR
+          value: level_zero:0
+        - name: SYCL_CACHE_PERSISTENT
+          value: "1"
+        - name: HF_HOME
+          value: /mnt/weka/data/llm-d-models-pv
+        - name: HF_HUB_CACHE
+          value: /mnt/weka/data/llm-d-models-pv/hub
+        - name: HF_HUB_OFFLINE
+          value: "1"
+        - name: TRANSFORMERS_CACHE
+          value: /mnt/weka/data/llm-d-models-pv/hub
+        - name: HF_MODULES_CACHE
+          value: /tmp/hf_modules
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: http_proxy
+          value: http://proxy-dmz.intel.com:911
+        - name: https_proxy
+          value: http://proxy-dmz.intel.com:912
+        - name: no_proxy
+          value: 127.0.0.1,localhost,.svc,.cluster.local,172.26.0.0/16,10.66.0.0/16,10.210.0.0/16
+        envFrom:
+        - secretRef:
+            name: hf-token-secret
+        image: amr-registry.caas.intel.com/taas/scalable-deploy-intel/main_dockerfile.dynamo_xpu:509-5c58c0e
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 10
+          initialDelaySeconds: 1800
+          periodSeconds: 30
+          tcpSocket:
+            port: modelserver
+          timeoutSeconds: 30
+        name: modelserver
+        ports:
+        - containerPort: 8000
+          name: modelserver
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 6
+          periodSeconds: 10
+          tcpSocket:
+            port: modelserver
+          timeoutSeconds: 30
+        resources:
+          claims:
+          - name: xpu
+          limits:
+            cpu: "32"
+            memory: 160Gi
+          requests:
+            cpu: "8"
+            memory: 96Gi
+        startupProbe:
+          failureThreshold: 180
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          tcpSocket:
+            port: modelserver
+          timeoutSeconds: 30
+        volumeMounts:
+        - mountPath: /opt/sglang-runtime-patches
+          name: kimi-epd-runtime-patch
+          readOnly: true
+        - mountPath: /mnt/weka/data/llm-d-models-pv
+          name: model-cache
+          readOnly: true
+        - mountPath: /dev/shm
+          name: shm
+      imagePullSecrets:
+      - name: amr-caas-registry
+      - name: amr-idc-registry
+      - name: amr-idc-registry-updated
+      nodeSelector:
+        kubernetes.io/hostname: sc09intel02-b60
+      resourceClaims:
+      - name: xpu
+        resourceClaimTemplateName: llmd-kimivla3b-4e1pd-sglang-llmd-kimivla3b-intel02-b60-xpu2
+      securityContext:
+        fsGroup: 1000
+      serviceAccountName: llmd-kimivla3b-4e1pd-sglang-sa
+      terminationGracePeriodSeconds: 120
+      volumes:
+      - configMap:
+          defaultMode: 365
+          name: llmd-kimivla3b-4e1pd-sglang-kimi-epd-runtime-patch
+        name: kimi-epd-runtime-patch
+      - hostPath:
+          path: /mnt/weka/data/llm-d-models-pv
+          type: Directory
+        name: model-cache
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi
+        name: shm
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: encode-3
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/accelerator-variant: xpu
+    llm-d.ai/accelerator-vendor: intel
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/role: encode
+    llm-d.ai/topology: 4e1pd
+  name: llmd-kimivla3b-4e1pd-sglang-encode-3
+  namespace: shared-infra
+spec:
+  progressDeadlineSeconds: 3600
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: encode-3
+      app.kubernetes.io/name: llmd-kimivla3b-epd
+      llm-d.ai/accelerator-topology: h200-b70
+      llm-d.ai/engine-type: sglang
+      llm-d.ai/guide: kimivla3b-epd-4e1pd
+      llm-d.ai/model: kimivla3b
+      llm-d.ai/role: encode
+      llm-d.ai/topology: 4e1pd
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: encode-3
+        app.kubernetes.io/name: llmd-kimivla3b-epd
+        llm-d.ai/accelerator-topology: h200-b70
+        llm-d.ai/accelerator-variant: xpu
+        llm-d.ai/accelerator-vendor: intel
+        llm-d.ai/engine-type: sglang
+        llm-d.ai/guide: kimivla3b-epd-4e1pd
+        llm-d.ai/model: kimivla3b
+        llm-d.ai/role: encode
+        llm-d.ai/topology: 4e1pd
+    spec:
+      containers:
+      - args:
+        - |
+          python3 /opt/sglang-runtime-patches/patch_kimi_epd_runtime.py
+          exec python3 -m sglang.launch_server \
+            --model-path=/mnt/weka/data/llm-d-models-pv/hub/models--moonshotai--Kimi-VL-A3B-Instruct/snapshots/main \
+            --served-model-name=moonshotai/Kimi-VL-A3B-Instruct \
+            --host=0.0.0.0 \
+            --port=8000 \
+            --trust-remote-code \
+            --enable-multimodal \
+            --encoder-only \
+            --encoder-transfer-backend=zmq_to_scheduler \
+            --skip-tokenizer-init \
+            --device=xpu \
+            --tensor-parallel-size=1 \
+            --mem-fraction-static=0.70 \
+            --page-size=16 \
+            --mm-attention-backend=xpu_attn \
+            --log-level=info \
+            --enable-metrics \
+            --uvicorn-access-log-exclude-prefixes=/metrics
+        command:
+        - /bin/sh
+        - -lc
+        env:
+        - name: ZE_AFFINITY_MASK
+          value: "0"
+        - name: ONEAPI_DEVICE_SELECTOR
+          value: level_zero:0
+        - name: SYCL_CACHE_PERSISTENT
+          value: "1"
+        - name: HF_HOME
+          value: /mnt/weka/data/llm-d-models-pv
+        - name: HF_HUB_CACHE
+          value: /mnt/weka/data/llm-d-models-pv/hub
+        - name: HF_HUB_OFFLINE
+          value: "1"
+        - name: TRANSFORMERS_CACHE
+          value: /mnt/weka/data/llm-d-models-pv/hub
+        - name: HF_MODULES_CACHE
+          value: /tmp/hf_modules
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: http_proxy
+          value: http://proxy-dmz.intel.com:911
+        - name: https_proxy
+          value: http://proxy-dmz.intel.com:912
+        - name: no_proxy
+          value: 127.0.0.1,localhost,.svc,.cluster.local,172.26.0.0/16,10.66.0.0/16,10.210.0.0/16
+        envFrom:
+        - secretRef:
+            name: hf-token-secret
+        image: amr-registry.caas.intel.com/taas/scalable-deploy-intel/main_dockerfile.dynamo_xpu:509-5c58c0e
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 10
+          initialDelaySeconds: 1800
+          periodSeconds: 30
+          tcpSocket:
+            port: modelserver
+          timeoutSeconds: 30
+        name: modelserver
+        ports:
+        - containerPort: 8000
+          name: modelserver
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 6
+          periodSeconds: 10
+          tcpSocket:
+            port: modelserver
+          timeoutSeconds: 30
+        resources:
+          claims:
+          - name: xpu
+          limits:
+            cpu: "32"
+            memory: 160Gi
+          requests:
+            cpu: "8"
+            memory: 96Gi
+        startupProbe:
+          failureThreshold: 180
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          tcpSocket:
+            port: modelserver
+          timeoutSeconds: 30
+        volumeMounts:
+        - mountPath: /opt/sglang-runtime-patches
+          name: kimi-epd-runtime-patch
+          readOnly: true
+        - mountPath: /mnt/weka/data/llm-d-models-pv
+          name: model-cache
+          readOnly: true
+        - mountPath: /dev/shm
+          name: shm
+      imagePullSecrets:
+      - name: amr-caas-registry
+      - name: amr-idc-registry
+      - name: amr-idc-registry-updated
+      nodeSelector:
+        kubernetes.io/hostname: sc09intel02-b60
+      resourceClaims:
+      - name: xpu
+        resourceClaimTemplateName: llmd-kimivla3b-4e1pd-sglang-llmd-kimivla3b-intel02-b60-xpu3
+      securityContext:
+        fsGroup: 1000
+      serviceAccountName: llmd-kimivla3b-4e1pd-sglang-sa
+      terminationGracePeriodSeconds: 120
+      volumes:
+      - configMap:
+          defaultMode: 365
+          name: llmd-kimivla3b-4e1pd-sglang-kimi-epd-runtime-patch
+        name: kimi-epd-runtime-patch
+      - hostPath:
+          path: /mnt/weka/data/llm-d-models-pv
+          type: Directory
+        name: model-cache
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi
+        name: shm
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  labels:
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/topology: 4e1pd
+  name: llmd-kimivla3b-4e1pd-sglang-llmd-kimivla3b-intel02-b60-xpu0
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+      - exactly:
+          count: 1
+          deviceClassName: gpu.intel.com
+          selectors:
+          - cel:
+              expression: |
+                device.attributes["gpu.intel.com"].pciAddress == "0000:18:00.0"
+        name: xpu
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  labels:
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/topology: 4e1pd
+  name: llmd-kimivla3b-4e1pd-sglang-llmd-kimivla3b-intel02-b60-xpu1
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+      - exactly:
+          count: 1
+          deviceClassName: gpu.intel.com
+          selectors:
+          - cel:
+              expression: |
+                device.attributes["gpu.intel.com"].pciAddress == "0000:1c:00.0"
+        name: xpu
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  labels:
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/topology: 4e1pd
+  name: llmd-kimivla3b-4e1pd-sglang-llmd-kimivla3b-intel02-b60-xpu2
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+      - exactly:
+          count: 1
+          deviceClassName: gpu.intel.com
+          selectors:
+          - cel:
+              expression: |
+                device.attributes["gpu.intel.com"].pciAddress == "0000:54:00.0"
+        name: xpu
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  labels:
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/topology: 4e1pd
+  name: llmd-kimivla3b-4e1pd-sglang-llmd-kimivla3b-intel02-b60-xpu3
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+      - exactly:
+          count: 1
+          deviceClassName: gpu.intel.com
+          selectors:
+          - cel:
+              expression: |
+                device.attributes["gpu.intel.com"].pciAddress == "0000:58:00.0"
+        name: xpu
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  labels:
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    llm-d.ai/accelerator-topology: h200-b70
+    llm-d.ai/engine-type: sglang
+    llm-d.ai/guide: kimivla3b-epd-4e1pd
+    llm-d.ai/model: kimivla3b
+    llm-d.ai/topology: 4e1pd
+  name: llmd-kimivla3b-4e1pd-sglang-llmd-kimivla3b-super21-h200-gpu7
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+      - exactly:
+          count: 1
+          deviceClassName: gpu.nvidia.com
+          selectors:
+          - cel:
+              expression: |
+                device.attributes["gpu.nvidia.com"]["uuid"] in [
+                  "GPU-5566797f-f7a9-dac4-32c7-f2f0ea80a1f7"
+                ]
+        name: gpu

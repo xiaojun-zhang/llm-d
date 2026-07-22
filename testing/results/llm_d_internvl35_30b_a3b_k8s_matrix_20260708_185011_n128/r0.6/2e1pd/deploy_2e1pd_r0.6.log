@@ -1,0 +1,31 @@
+Deploying 2E1PD in namespace shared-infra
+H200 PD card: sc09dell06-nvd GPU 7, UUID GPU-5fd91b51-6253-0459-27bd-de55bb3e8ae6
+B60 encoder cards: sc09intel02-b60 XPU 0 PCI 0000:18:00.0, XPU 1 PCI 0000:1c:00.0
+This will create pods and ResourceClaims; run only after cards are reserved.
+WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/h-zheng/.kube/config
+WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/h-zheng/.kube/config
+Release "llmd-internvl35-2e1pd" does not exist. Installing it now.
+Pulled: ghcr.io/llm-d/charts/llm-d-router-standalone:v0.9.0
+Digest: sha256:8150c84045d59e6e91991daf810322140e116d5e02d244d96cbfc2b3000825cd
+NAME: llmd-internvl35-2e1pd
+LAST DEPLOYED: Wed Jul  8 19:45:10 2026
+NAMESPACE: shared-infra
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+serviceaccount/llmd-internvl35-2e1pd-sglang-sa created
+configmap/llmd-internvl35-2e1pd-sglang-llmd-internvl35-sglang-patches created
+service/llmd-internvl35-2e1pd-sglang-encode-0 created
+service/llmd-internvl35-2e1pd-sglang-encode-1 created
+deployment.apps/llmd-internvl35-2e1pd-sglang-decode created
+deployment.apps/llmd-internvl35-2e1pd-sglang-encode-0 created
+deployment.apps/llmd-internvl35-2e1pd-sglang-encode-1 created
+resourceclaimtemplate.resource.k8s.io/llmd-internvl35-2e1pd-sglang-llmd-dell06-gpu7 created
+resourceclaimtemplate.resource.k8s.io/llmd-internvl35-2e1pd-sglang-llmd-intel02-b60-xpu0 created
+resourceclaimtemplate.resource.k8s.io/llmd-internvl35-2e1pd-sglang-llmd-intel02-b60-xpu1 created
+Waiting for deployment "llmd-internvl35-2e1pd-sglang-encode-0" rollout to finish: 0 of 1 updated replicas are available...
+deployment "llmd-internvl35-2e1pd-sglang-encode-0" successfully rolled out
+deployment "llmd-internvl35-2e1pd-sglang-encode-1" successfully rolled out
+Waiting for deployment "llmd-internvl35-2e1pd-sglang-decode" rollout to finish: 0 of 1 updated replicas are available...
+deployment "llmd-internvl35-2e1pd-sglang-decode" successfully rolled out
+deployment "llmd-internvl35-2e1pd-epp" successfully rolled out

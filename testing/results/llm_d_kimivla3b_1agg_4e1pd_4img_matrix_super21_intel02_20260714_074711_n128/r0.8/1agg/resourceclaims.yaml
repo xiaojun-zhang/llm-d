@@ -1,0 +1,58 @@
+apiVersion: v1
+items:
+- apiVersion: resource.k8s.io/v1
+  kind: ResourceClaim
+  metadata:
+    annotations:
+      resource.kubernetes.io/pod-claim-name: gpu
+    creationTimestamp: "2026-07-14T15:48:58Z"
+    finalizers:
+    - resource.kubernetes.io/delete-protection
+    generateName: llmd-kimivla3b-1agg-sglang-decode-56df684c54-dhj8k-gpu-
+    name: llmd-kimivla3b-1agg-sglang-decode-56df684c54-dhj8k-gpu-gtdfp
+    namespace: shared-infra
+    ownerReferences:
+    - apiVersion: v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Pod
+      name: llmd-kimivla3b-1agg-sglang-decode-56df684c54-dhj8k
+      uid: 70a182ad-e9a6-45ef-a879-000823d02e64
+    resourceVersion: "44943792"
+    uid: fec9a0e2-9e13-47e6-baa1-e91a30d28822
+  spec:
+    devices:
+      requests:
+      - exactly:
+          allocationMode: ExactCount
+          count: 1
+          deviceClassName: gpu.nvidia.com
+          selectors:
+          - cel:
+              expression: |
+                device.attributes["gpu.nvidia.com"]["uuid"] in [
+                  "GPU-5566797f-f7a9-dac4-32c7-f2f0ea80a1f7"
+                ]
+        name: gpu
+  status:
+    allocation:
+      devices:
+        results:
+        - device: gpu-7
+          driver: gpu.nvidia.com
+          pool: sc09super21-h200
+          request: gpu
+      nodeSelector:
+        nodeSelectorTerms:
+        - matchFields:
+          - key: metadata.name
+            operator: In
+            values:
+            - sc09super21-h200
+    reservedFor:
+    - name: llmd-kimivla3b-1agg-sglang-decode-56df684c54-dhj8k
+      resource: pods
+      uid: 70a182ad-e9a6-45ef-a879-000823d02e64
+kind: List
+metadata:
+  resourceVersion: ""
