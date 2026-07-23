@@ -4,6 +4,10 @@
 
 This experimental guide deploys `Qwen/Qwen3-VL-32B-Instruct` with encode disaggregation for multimodal inference workloads. Encode disaggregation offloads the multimodal encoding stage (converting raw images, video, or audio into embeddings) to dedicated workers. The resulting embeddings are then consumed by prefill/decode workers alongside text tokens. When a request contains multiple multimodal entries, they can be processed concurrently by different Encode workers, reducing overall latency.
 
+For heterogeneous E/PD with Intel XPU Encode workers, an NVIDIA GPU PD worker,
+and SGLang, see the
+[Heterogeneous SGLang E/PD Guide](./heterogeneous/sglang/README.md).
+
 llm-d supports two encode-disaggregated topologies:
 
 | Topology | Description | Workers |

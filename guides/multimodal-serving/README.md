@@ -13,6 +13,7 @@ Multimodal models (such as `Qwen/Qwen3-VL-32B-Instruct`) process combinations of
 
 * **[Aggregated Serving (Aggregation) Guide](./aggregation/README.md)**: Deploy a unified serving topology with prefix-cache and load-aware routing that tracks and matches multimodal payloads across model servers.
 * **[Encode-Disaggregated Serving (E-Disaggregation) Guide](./e-disaggregation/README.md)**: Deploy specialized multi-tier topologies (**E/PD** or **E/P/D**) to offload vision encoding to dedicated nodes and transfer embeddings over high-performance NIXL dataplanes.
+* **[Heterogeneous SGLang E/PD Guide](./e-disaggregation/heterogeneous/sglang/README.md)**: Deploy Intel XPU Encode workers with an NVIDIA GPU PD worker.
 
 ---
 
