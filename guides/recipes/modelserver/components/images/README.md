@@ -12,7 +12,6 @@ This directory contains Kustomize Components that define the **default container
 | `amd-sglang` | `docker.io/lmsysorg/sglang` | AMD GPU with SGLang (ROCm variant) |
 | `cpu-vllm` | `ghcr.io/llm-d/llm-d-cpu` | CPU with vLLM |
 | `xpu-vllm` | `ghcr.io/llm-d/llm-d-xpu` | Intel XPU with vLLM |
-| `hpu-vllm` | `ghcr.io/llm-d/llm-d-hpu` | Intel Gaudi (HPU) with vLLM |
 | `tpu-vllm` | `vllm/vllm-tpu` | Google TPU with vLLM |
 | `routing-sidecar` | `ghcr.io/llm-d/llm-d-routing-sidecar` | Routing sidecar for PD disaggregation |
 
