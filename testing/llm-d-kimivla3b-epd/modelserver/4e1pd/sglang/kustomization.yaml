@@ -1,0 +1,45 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: shared-infra
+
+resources:
+  - ../../../../../guides/recipes/modelserver/base/single-host/default
+  - ../../common
+  - encode-0-deployment.yaml
+  - encode-1-deployment.yaml
+  - encode-2-deployment.yaml
+  - encode-3-deployment.yaml
+  - encode-services.yaml
+
+configMapGenerator:
+  - name: kimi-epd-runtime-patch
+    files:
+      - patch_kimi_epd_runtime.py
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+namePrefix: llmd-kimivla3b-4e1pd-sglang-
+
+images:
+  - name: REPLACE_MODEL_SERVER_IMAGE
+    newName: amr-registry.caas.intel.com/taas/scalable-deploy-intel/main_dockerfile.dynamo_gpu
+    newTag: 477-e3682ee
+
+labels:
+  - pairs:
+      app.kubernetes.io/name: llmd-kimivla3b-epd
+      llm-d.ai/guide: kimivla3b-epd-4e1pd
+      llm-d.ai/model: kimivla3b
+      llm-d.ai/topology: 4e1pd
+      llm-d.ai/engine-type: sglang
+      llm-d.ai/accelerator-topology: h200-b70
+    includeSelectors: true
+    includeTemplates: true
+
+patches:
+  - path: patch-decode.yaml
+    target:
+      kind: Deployment
+      name: decode

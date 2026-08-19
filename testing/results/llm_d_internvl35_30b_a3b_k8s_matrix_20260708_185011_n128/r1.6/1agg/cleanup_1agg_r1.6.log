@@ -1,0 +1,17 @@
+serviceaccount "llmd-internvl35-1agg-sglang-sa" deleted from shared-infra namespace
+configmap "llmd-internvl35-1agg-sglang-llmd-internvl35-sglang-patches" deleted from shared-infra namespace
+deployment.apps "llmd-internvl35-1agg-sglang-decode" deleted from shared-infra namespace
+resourceclaimtemplate.resource.k8s.io "llmd-internvl35-1agg-sglang-llmd-dell06-gpu7" deleted from shared-infra namespace
+resourceclaimtemplate.resource.k8s.io "llmd-internvl35-1agg-sglang-llmd-intel02-b60-xpu0" deleted from shared-infra namespace
+resourceclaimtemplate.resource.k8s.io "llmd-internvl35-1agg-sglang-llmd-intel02-b60-xpu1" deleted from shared-infra namespace
+WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/h-zheng/.kube/config
+WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/h-zheng/.kube/config
+Error: uninstall: Release not loaded: llmd-internvl35-2e1pd: release: not found
+WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/h-zheng/.kube/config
+WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/h-zheng/.kube/config
+release "llmd-internvl35-1agg" uninstalled
+waiting for cleanup attempt 1
+pod/llmd-internvl35-1agg-epp-556569cc6d-srlpj
+pod/llmd-internvl35-1agg-sglang-decode-69ddd85f6c-qt5gw
+resourceclaim.resource.k8s.io/llmd-internvl35-1agg-sglang-decode-69ddd85f6c-qt5gw-gpu-4bqpq
+cleanup complete

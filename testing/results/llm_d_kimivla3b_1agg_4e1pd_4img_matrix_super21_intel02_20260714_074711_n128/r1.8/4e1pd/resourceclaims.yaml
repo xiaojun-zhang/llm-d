@@ -1,0 +1,262 @@
+apiVersion: v1
+items:
+- apiVersion: resource.k8s.io/v1
+  kind: ResourceClaim
+  metadata:
+    annotations:
+      resource.kubernetes.io/pod-claim-name: gpu
+    creationTimestamp: "2026-07-14T17:07:14Z"
+    finalizers:
+    - resource.kubernetes.io/delete-protection
+    generateName: llmd-kimivla3b-4e1pd-sglang-decode-56457c4795-c9w5s-gpu-
+    name: llmd-kimivla3b-4e1pd-sglang-decode-56457c4795-c9w5s-gpu-vtn8l
+    namespace: shared-infra
+    ownerReferences:
+    - apiVersion: v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Pod
+      name: llmd-kimivla3b-4e1pd-sglang-decode-56457c4795-c9w5s
+      uid: e8c8fc90-75cd-474d-a103-2ae21c403572
+    resourceVersion: "44971794"
+    uid: 7315426d-e71f-4bf1-a45e-366457058c03
+  spec:
+    devices:
+      requests:
+      - exactly:
+          allocationMode: ExactCount
+          count: 1
+          deviceClassName: gpu.nvidia.com
+          selectors:
+          - cel:
+              expression: |
+                device.attributes["gpu.nvidia.com"]["uuid"] in [
+                  "GPU-5566797f-f7a9-dac4-32c7-f2f0ea80a1f7"
+                ]
+        name: gpu
+  status:
+    allocation:
+      devices:
+        results:
+        - device: gpu-7
+          driver: gpu.nvidia.com
+          pool: sc09super21-h200
+          request: gpu
+      nodeSelector:
+        nodeSelectorTerms:
+        - matchFields:
+          - key: metadata.name
+            operator: In
+            values:
+            - sc09super21-h200
+    reservedFor:
+    - name: llmd-kimivla3b-4e1pd-sglang-decode-56457c4795-c9w5s
+      resource: pods
+      uid: e8c8fc90-75cd-474d-a103-2ae21c403572
+- apiVersion: resource.k8s.io/v1
+  kind: ResourceClaim
+  metadata:
+    annotations:
+      resource.kubernetes.io/pod-claim-name: xpu
+    creationTimestamp: "2026-07-14T17:07:14Z"
+    finalizers:
+    - resource.kubernetes.io/delete-protection
+    generateName: llmd-kimivla3b-4e1pd-sglang-encode-0-ffcf7f685-mh59q-xpu-
+    name: llmd-kimivla3b-4e1pd-sglang-encode-0-ffcf7f685-mh59q-xpu-vpbzb
+    namespace: shared-infra
+    ownerReferences:
+    - apiVersion: v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Pod
+      name: llmd-kimivla3b-4e1pd-sglang-encode-0-ffcf7f685-mh59q
+      uid: 8b3307a6-ca19-4921-b859-47b1e7e2df60
+    resourceVersion: "44971779"
+    uid: 4e31a15c-624f-48b3-a6a0-c99028276fa2
+  spec:
+    devices:
+      requests:
+      - exactly:
+          allocationMode: ExactCount
+          count: 1
+          deviceClassName: gpu.intel.com
+          selectors:
+          - cel:
+              expression: |
+                device.attributes["gpu.intel.com"].pciAddress == "0000:18:00.0"
+        name: xpu
+  status:
+    allocation:
+      devices:
+        results:
+        - device: 0000-18-00-0-0xe211
+          driver: gpu.intel.com
+          pool: sc09intel02-b60
+          request: xpu
+      nodeSelector:
+        nodeSelectorTerms:
+        - matchFields:
+          - key: metadata.name
+            operator: In
+            values:
+            - sc09intel02-b60
+    reservedFor:
+    - name: llmd-kimivla3b-4e1pd-sglang-encode-0-ffcf7f685-mh59q
+      resource: pods
+      uid: 8b3307a6-ca19-4921-b859-47b1e7e2df60
+- apiVersion: resource.k8s.io/v1
+  kind: ResourceClaim
+  metadata:
+    annotations:
+      resource.kubernetes.io/pod-claim-name: xpu
+    creationTimestamp: "2026-07-14T17:07:14Z"
+    finalizers:
+    - resource.kubernetes.io/delete-protection
+    generateName: llmd-kimivla3b-4e1pd-sglang-encode-1-54b66ff7d7-m5pb-xp
+    name: llmd-kimivla3b-4e1pd-sglang-encode-1-54b66ff7d7-m5pb-xp4zqhd
+    namespace: shared-infra
+    ownerReferences:
+    - apiVersion: v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Pod
+      name: llmd-kimivla3b-4e1pd-sglang-encode-1-54b66ff7d7-m5pbf
+      uid: df6febdc-6498-4b77-ab30-4a7f6133e0b2
+    resourceVersion: "44971787"
+    uid: 30bf4517-f050-4981-9434-4ae02bbf0c8e
+  spec:
+    devices:
+      requests:
+      - exactly:
+          allocationMode: ExactCount
+          count: 1
+          deviceClassName: gpu.intel.com
+          selectors:
+          - cel:
+              expression: |
+                device.attributes["gpu.intel.com"].pciAddress == "0000:1c:00.0"
+        name: xpu
+  status:
+    allocation:
+      devices:
+        results:
+        - device: 0000-1c-00-0-0xe211
+          driver: gpu.intel.com
+          pool: sc09intel02-b60
+          request: xpu
+      nodeSelector:
+        nodeSelectorTerms:
+        - matchFields:
+          - key: metadata.name
+            operator: In
+            values:
+            - sc09intel02-b60
+    reservedFor:
+    - name: llmd-kimivla3b-4e1pd-sglang-encode-1-54b66ff7d7-m5pbf
+      resource: pods
+      uid: df6febdc-6498-4b77-ab30-4a7f6133e0b2
+- apiVersion: resource.k8s.io/v1
+  kind: ResourceClaim
+  metadata:
+    annotations:
+      resource.kubernetes.io/pod-claim-name: xpu
+    creationTimestamp: "2026-07-14T17:07:14Z"
+    finalizers:
+    - resource.kubernetes.io/delete-protection
+    generateName: llmd-kimivla3b-4e1pd-sglang-encode-2-796d5446cc-q88w-xp
+    name: llmd-kimivla3b-4e1pd-sglang-encode-2-796d5446cc-q88w-xpzcdcp
+    namespace: shared-infra
+    ownerReferences:
+    - apiVersion: v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Pod
+      name: llmd-kimivla3b-4e1pd-sglang-encode-2-796d5446cc-q88wv
+      uid: 0694b2bc-6287-432e-affe-00695e8dfcf8
+    resourceVersion: "44971767"
+    uid: d40a38f7-1d37-4111-a369-b71ede5eb0ea
+  spec:
+    devices:
+      requests:
+      - exactly:
+          allocationMode: ExactCount
+          count: 1
+          deviceClassName: gpu.intel.com
+          selectors:
+          - cel:
+              expression: |
+                device.attributes["gpu.intel.com"].pciAddress == "0000:54:00.0"
+        name: xpu
+  status:
+    allocation:
+      devices:
+        results:
+        - device: 0000-54-00-0-0xe211
+          driver: gpu.intel.com
+          pool: sc09intel02-b60
+          request: xpu
+      nodeSelector:
+        nodeSelectorTerms:
+        - matchFields:
+          - key: metadata.name
+            operator: In
+            values:
+            - sc09intel02-b60
+    reservedFor:
+    - name: llmd-kimivla3b-4e1pd-sglang-encode-2-796d5446cc-q88wv
+      resource: pods
+      uid: 0694b2bc-6287-432e-affe-00695e8dfcf8
+- apiVersion: resource.k8s.io/v1
+  kind: ResourceClaim
+  metadata:
+    annotations:
+      resource.kubernetes.io/pod-claim-name: xpu
+    creationTimestamp: "2026-07-14T17:07:14Z"
+    finalizers:
+    - resource.kubernetes.io/delete-protection
+    generateName: llmd-kimivla3b-4e1pd-sglang-encode-3-576fdcb8f9-rg22-xp
+    name: llmd-kimivla3b-4e1pd-sglang-encode-3-576fdcb8f9-rg22-xpmmrdf
+    namespace: shared-infra
+    ownerReferences:
+    - apiVersion: v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Pod
+      name: llmd-kimivla3b-4e1pd-sglang-encode-3-576fdcb8f9-rg22m
+      uid: 1f71bd97-70c5-4384-a90a-bb41fc504c5d
+    resourceVersion: "44971774"
+    uid: 1f7d97ff-ea24-49b2-b76e-68f9c4494f35
+  spec:
+    devices:
+      requests:
+      - exactly:
+          allocationMode: ExactCount
+          count: 1
+          deviceClassName: gpu.intel.com
+          selectors:
+          - cel:
+              expression: |
+                device.attributes["gpu.intel.com"].pciAddress == "0000:58:00.0"
+        name: xpu
+  status:
+    allocation:
+      devices:
+        results:
+        - device: 0000-58-00-0-0xe211
+          driver: gpu.intel.com
+          pool: sc09intel02-b60
+          request: xpu
+      nodeSelector:
+        nodeSelectorTerms:
+        - matchFields:
+          - key: metadata.name
+            operator: In
+            values:
+            - sc09intel02-b60
+    reservedFor:
+    - name: llmd-kimivla3b-4e1pd-sglang-encode-3-576fdcb8f9-rg22m
+      resource: pods
+      uid: 1f71bd97-70c5-4384-a90a-bb41fc504c5d
+kind: List
+metadata:
+  resourceVersion: ""

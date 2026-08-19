@@ -1,0 +1,27 @@
+serviceaccount "llmd-internvl35-2e1pd-sglang-sa" deleted from shared-infra namespace
+configmap "llmd-internvl35-2e1pd-sglang-llmd-internvl35-sglang-patches" deleted from shared-infra namespace
+service "llmd-internvl35-2e1pd-sglang-encode-0" deleted from shared-infra namespace
+service "llmd-internvl35-2e1pd-sglang-encode-1" deleted from shared-infra namespace
+deployment.apps "llmd-internvl35-2e1pd-sglang-decode" deleted from shared-infra namespace
+deployment.apps "llmd-internvl35-2e1pd-sglang-encode-0" deleted from shared-infra namespace
+deployment.apps "llmd-internvl35-2e1pd-sglang-encode-1" deleted from shared-infra namespace
+resourceclaimtemplate.resource.k8s.io "llmd-internvl35-2e1pd-sglang-llmd-dell06-gpu7" deleted from shared-infra namespace
+resourceclaimtemplate.resource.k8s.io "llmd-internvl35-2e1pd-sglang-llmd-intel02-b60-xpu0" deleted from shared-infra namespace
+resourceclaimtemplate.resource.k8s.io "llmd-internvl35-2e1pd-sglang-llmd-intel02-b60-xpu1" deleted from shared-infra namespace
+WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/h-zheng/.kube/config
+WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/h-zheng/.kube/config
+release "llmd-internvl35-2e1pd" uninstalled
+WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/h-zheng/.kube/config
+WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/h-zheng/.kube/config
+Error: uninstall: Release not loaded: llmd-internvl35-1agg: release: not found
+waiting for cleanup attempt 1
+pod/llmd-internvl35-2e1pd-epp-68b8bbc8b4-rfgvr
+pod/llmd-internvl35-2e1pd-sglang-decode-584dcd84d7-wdqxp
+pod/llmd-internvl35-2e1pd-sglang-encode-0-68d9f69fdc-lg8mn
+pod/llmd-internvl35-2e1pd-sglang-encode-1-74c67d6bc9-2f47b
+resourceclaim.resource.k8s.io/llmd-internvl35-2e1pd-sglang-decode-584dcd84d7-wdqxp-gpu-wdpx4
+resourceclaim.resource.k8s.io/llmd-internvl35-2e1pd-sglang-encode-0-68d9f69fdc-lg8-xpz52w2
+resourceclaim.resource.k8s.io/llmd-internvl35-2e1pd-sglang-encode-1-74c67d6bc9-2f4-xpb6sr2
+waiting for cleanup attempt 2
+pod/llmd-internvl35-2e1pd-sglang-decode-584dcd84d7-wdqxp
+cleanup complete

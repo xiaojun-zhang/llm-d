@@ -1,0 +1,62 @@
+## Kimi-VL-A3B 2E1PD router overrides.
+## Layer on top of guides/recipes/router/base.values.yaml.
+
+router:
+  extraServicePorts:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 8081
+
+  epp:
+    pluginsConfigFile: "kimivla3b-2e1pd-config.yaml"
+    pluginsCustomConfig:
+      kimivla3b-2e1pd-config.yaml: |
+        apiVersion: llm-d.ai/v1alpha1
+        kind: EndpointPickerConfig
+        plugins:
+        - type: disagg-headers-handler
+        - type: always-disagg-multimodal-decider
+        - type: disagg-profile-handler
+          parameters:
+            deciders:
+              encode: always-disagg-multimodal-decider
+        - type: encode-filter
+        - type: decode-filter
+        - type: prefix-cache-scorer
+        - type: queue-scorer
+        - type: kv-cache-utilization-scorer
+        - type: active-request-scorer
+        - type: token-producer
+          parameters:
+            estimate:
+              image:
+                mode: dynamic
+                defaultResolution:
+                  width: 1920
+                  height: 1080
+                dynamic:
+                  factor: 1024
+        - type: approx-prefix-cache-producer
+        - type: max-score-picker
+        schedulingProfiles:
+        - name: encode
+          plugins:
+          - pluginRef: encode-filter
+          - pluginRef: queue-scorer
+            weight: 2
+          - pluginRef: max-score-picker
+        - name: decode
+          plugins:
+          - pluginRef: decode-filter
+          - pluginRef: active-request-scorer
+            weight: 2
+          - pluginRef: prefix-cache-scorer
+            weight: 3
+          - pluginRef: kv-cache-utilization-scorer
+            weight: 2
+          - pluginRef: max-score-picker
+
+  modelServers:
+    matchLabels:
+      llm-d.ai/guide: "kimivla3b-epd-2e1pd"

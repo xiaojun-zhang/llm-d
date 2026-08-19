@@ -1,0 +1,7 @@
+NAME                                                    READY   STATUS    RESTARTS   AGE     IP                NODE               NOMINATED NODE   READINESS GATES
+llmd-kimivla3b-4e1pd-epp-5475589556-shq9v               2/2     Running   0          6m44s   192.168.236.70    sc09dell06-nvd     <none>           <none>
+llmd-kimivla3b-4e1pd-sglang-decode-56457c4795-7qnsh     2/2     Running   0          6m43s   192.168.200.215   sc09super21-h200   <none>           <none>
+llmd-kimivla3b-4e1pd-sglang-encode-0-ffcf7f685-kz45w    1/1     Running   0          6m43s   192.168.39.79     sc09intel02-b60    <none>           <none>
+llmd-kimivla3b-4e1pd-sglang-encode-1-54b66ff7d7-crjnj   1/1     Running   0          6m43s   192.168.39.84     sc09intel02-b60    <none>           <none>
+llmd-kimivla3b-4e1pd-sglang-encode-2-796d5446cc-vvghr   1/1     Running   0          6m43s   192.168.39.83     sc09intel02-b60    <none>           <none>
+llmd-kimivla3b-4e1pd-sglang-encode-3-576fdcb8f9-zsh6x   1/1     Running   0          6m43s   192.168.39.81     sc09intel02-b60    <none>           <none>

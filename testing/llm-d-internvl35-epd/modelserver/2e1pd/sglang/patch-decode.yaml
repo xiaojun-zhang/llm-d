@@ -1,0 +1,214 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: decode
+  labels:
+    app.kubernetes.io/component: pd
+    llm-d.ai/role: decode
+    llm-d.ai/accelerator-variant: gpu
+    llm-d.ai/accelerator-vendor: nvidia
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: pd
+      llm-d.ai/role: decode
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: pd
+        llm-d.ai/role: decode
+        llm-d.ai/accelerator-variant: gpu
+        llm-d.ai/accelerator-vendor: nvidia
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: sc09dell06-nvd
+      imagePullSecrets:
+        - name: amr-caas-registry
+        - name: amr-idc-registry
+        - name: amr-idc-registry-updated
+      resourceClaims:
+        - name: gpu
+          resourceClaimTemplateName: llmd-dell06-gpu7
+      securityContext:
+        fsGroup: 1000
+      terminationGracePeriodSeconds: 120
+      initContainers:
+        - name: routing-proxy
+          image: ghcr.io/llm-d/llm-d-router-disagg-sidecar:v0.9.0
+          imagePullPolicy: Always
+          args:
+            - --port=8000
+            - --vllm-port=8200
+            - --kv-connector=nixlv2
+            - --zap-log-level=1
+            - --secure-proxy=false
+          ports:
+            - containerPort: 8000
+              name: sidecar
+              protocol: TCP
+          resources: {}
+          restartPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+        - name: wait-encoders
+          image: amr-registry.caas.intel.com/taas/scalable-deploy-intel/main_dockerfile.dynamo_gpu:477-e3682ee
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-lc"]
+          args:
+            - |
+              set -eu
+              for url in \
+                http://llmd-internvl35-2e1pd-sglang-encode-0.shared-infra.svc.cluster.local:8000/health \
+                http://llmd-internvl35-2e1pd-sglang-encode-1.shared-infra.svc.cluster.local:8000/health
+              do
+                echo "waiting for ${url}"
+                i=0
+                until python3 - "${url}" <<'PY'
+              import sys
+              import urllib.request
+
+              try:
+                  with urllib.request.urlopen(sys.argv[1], timeout=5) as response:
+                      raise SystemExit(0 if response.status == 200 else 1)
+              except Exception:
+                  raise SystemExit(1)
+              PY
+                do
+                  i=$((i + 1))
+                  if [ "${i}" -ge 360 ]; then
+                    echo "timed out waiting for ${url}" >&2
+                    exit 1
+                  fi
+                  sleep 5
+                done
+              done
+              echo "all encoders are healthy"
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+      containers:
+        - name: modelserver
+          command: ["/bin/sh", "-lc"]
+          args:
+            - |
+              python3 /opt/llmd-patches/patch_sglang_internvl_epd.py
+              exec python3 -m sglang.launch_server \
+                --model-path=/mnt/weka/data/llm-d-models-pv/hub/models--OpenGVLab--InternVL3_5-30B-A3B/snapshots/main \
+                --served-model-name=OpenGVLab/InternVL3_5-30B-A3B \
+                --host=0.0.0.0 \
+                --port=8200 \
+                --trust-remote-code \
+                --enable-multimodal \
+                --skip-server-warmup \
+                --language-only \
+                --encoder-transfer-backend=zmq_to_scheduler \
+                --encoder-urls \
+                http://llmd-internvl35-2e1pd-sglang-encode-0.shared-infra.svc.cluster.local:8000 \
+                http://llmd-internvl35-2e1pd-sglang-encode-1.shared-infra.svc.cluster.local:8000 \
+                --chat-template=internvl-2-5 \
+                --dtype=auto \
+                --kv-cache-dtype=fp8_e4m3 \
+                --tensor-parallel-size=1 \
+                --mem-fraction-static=0.80 \
+                --prefill-max-requests=4 \
+                --max-running-requests=32 \
+                --chunked-prefill-size=65536 \
+                --max-prefill-tokens=65536 \
+                --max-total-tokens=250000 \
+                --cuda-graph-max-bs=32 \
+                --page-size=16 \
+                --disable-radix-cache \
+                --log-level=info \
+                --enable-metrics \
+                --uvicorn-access-log-exclude-prefixes=/metrics
+          envFrom:
+            - secretRef:
+                name: hf-token-secret
+          env:
+            - name: CUDA_VISIBLE_DEVICES
+              value: "0"
+            - name: HF_HOME
+              value: /mnt/weka/data/llm-d-models-pv
+            - name: HF_HUB_CACHE
+              value: /mnt/weka/data/llm-d-models-pv/hub
+            - name: HF_HUB_OFFLINE
+              value: "1"
+            - name: TRANSFORMERS_CACHE
+              value: /mnt/weka/data/llm-d-models-pv/hub
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: http_proxy
+              value: http://proxy-dmz.intel.com:911
+            - name: https_proxy
+              value: http://proxy-dmz.intel.com:912
+            - name: no_proxy
+              value: 127.0.0.1,localhost,.svc,.cluster.local,172.26.0.0/16,10.66.0.0/16,10.210.0.0/16
+          ports:
+            - $patch: replace
+            - name: modelserver
+              containerPort: 8200
+              protocol: TCP
+            - name: nixl
+              containerPort: 5600
+              protocol: TCP
+          resources:
+            claims:
+              - name: gpu
+            requests:
+              cpu: "16"
+              memory: 96Gi
+            limits:
+              cpu: "32"
+              memory: 160Gi
+          volumeMounts:
+            - name: model-cache
+              mountPath: /mnt/weka/data/llm-d-models-pv
+              readOnly: true
+            - name: sglang-patches
+              mountPath: /opt/llmd-patches
+              readOnly: true
+            - name: shm
+              mountPath: /dev/shm
+          startupProbe:
+            httpGet:
+              path: /v1/models
+              port: modelserver
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 30
+            failureThreshold: 180
+          readinessProbe:
+            httpGet:
+              path: /v1/models
+              port: modelserver
+            periodSeconds: 10
+            timeoutSeconds: 30
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: modelserver
+            initialDelaySeconds: 1800
+            periodSeconds: 30
+            timeoutSeconds: 30
+            failureThreshold: 10
+      volumes:
+        - name: model-cache
+          hostPath:
+            path: /mnt/weka/data/llm-d-models-pv
+            type: Directory
+        - name: sglang-patches
+          configMap:
+            name: llmd-internvl35-sglang-patches
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Gi

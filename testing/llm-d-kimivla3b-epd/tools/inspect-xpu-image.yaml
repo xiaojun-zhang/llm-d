@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: llmd-xpu-image-inspect
+  namespace: shared-infra
+  labels:
+    app.kubernetes.io/name: llmd-kimivla3b-epd
+    app.kubernetes.io/component: image-inspect
+spec:
+  restartPolicy: Never
+  imagePullSecrets:
+    - name: amr-caas-registry
+    - name: amr-idc-registry
+    - name: amr-idc-registry-updated
+  containers:
+    - name: inspect
+      image: amr-registry.caas.intel.com/taas/scalable-deploy-intel/main_dockerfile.dynamo_xpu:509-5c58c0e
+      imagePullPolicy: IfNotPresent
+      command:
+        - /bin/sh
+        - -lc
+      args:
+        - |
+          python3 - <<'PY'
+          import importlib.metadata as metadata
+
+          for package in ("sglang", "sgl-kernel", "torch", "transformers"):
+              try:
+                  print(f"{package} {metadata.version(package)}")
+              except Exception as exc:
+                  print(f"{package} missing: {exc}")
+          PY
+
+          grep -n "resolve_max_seqlen" /opt/sglang/python/sglang/srt/layers/attention/vision.py || true
+          grep -n "_max_seqlen" /opt/sglang/python/sglang/srt/layers/attention/vision.py || true
+          python3 -m sglang.launch_server --help | grep -E "encoder-only|language-only|encoder-transfer-backend|mm-attention-backend|xpu_attn" || true

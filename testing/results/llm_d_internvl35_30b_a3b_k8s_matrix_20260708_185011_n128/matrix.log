@@ -1,0 +1,104 @@
+[2026-07-08 18:50:11] Matrix result root: /home/h-zheng/robin/llm-d/testing/results/llm_d_internvl35_30b_a3b_k8s_matrix_20260708_185011_n128
+[2026-07-08 18:50:11] Rates: 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6 1.8 2.0; cases per rate: 1agg then 2e1pd; num_prompts=128
+[2026-07-08 18:50:11] RATE ROUND 0.2 BEGIN
+[2026-07-08 18:50:11] START 1agg rate=0.2 num_prompts=128
+[2026-07-08 19:03:22] BENCH OK 1agg rate=0.2
+[2026-07-08 19:03:22] SUMMARY 1agg rate=0.2: successful=113, req_throughput=0.17 , mean_e2e_ms=7521.20 , mean_ttft_ms=4358.17 
+[2026-07-08 19:04:26] CLEANUP OK 1agg rate=0.2
+[2026-07-08 19:04:26] START 2e1pd rate=0.2 num_prompts=128
+[2026-07-08 19:17:53] BENCH OK 2e1pd rate=0.2
+[2026-07-08 19:17:53] SUMMARY 2e1pd rate=0.2: successful=119, req_throughput=0.18 , mean_e2e_ms=1528.60 , mean_ttft_ms=851.48 
+[2026-07-08 19:19:59] CLEANUP OK 2e1pd rate=0.2
+[2026-07-08 19:19:59] RATE ROUND 0.2 END failures_so_far=0
+[2026-07-08 19:19:59] RATE ROUND 0.4 BEGIN
+[2026-07-08 19:19:59] START 1agg rate=0.4 num_prompts=128
+[2026-07-08 19:27:39] BENCH OK 1agg rate=0.4
+[2026-07-08 19:27:39] SUMMARY 1agg rate=0.4: successful=98, req_throughput=0.29 , mean_e2e_ms=11490.51 , mean_ttft_ms=5859.31 
+[2026-07-08 19:27:46] CLEANUP OK 1agg rate=0.4
+[2026-07-08 19:27:46] START 2e1pd rate=0.4 num_prompts=128
+[2026-07-08 19:35:33] BENCH OK 2e1pd rate=0.4
+[2026-07-08 19:35:33] SUMMARY 2e1pd rate=0.4: successful=128, req_throughput=0.40 , mean_e2e_ms=1334.86 , mean_ttft_ms=774.73 
+[2026-07-08 19:35:45] CLEANUP OK 2e1pd rate=0.4
+[2026-07-08 19:35:45] RATE ROUND 0.4 END failures_so_far=0
+[2026-07-08 19:35:45] RATE ROUND 0.6 BEGIN
+[2026-07-08 19:35:45] START 1agg rate=0.6 num_prompts=128
+[2026-07-08 19:42:59] BENCH OK 1agg rate=0.6
+[2026-07-08 19:42:59] SUMMARY 1agg rate=0.6: successful=128, req_throughput=0.48 , mean_e2e_ms=15400.59 , mean_ttft_ms=7582.96 
+[2026-07-08 19:45:09] CLEANUP OK 1agg rate=0.6
+[2026-07-08 19:45:09] START 2e1pd rate=0.6 num_prompts=128
+[2026-07-08 19:51:24] BENCH OK 2e1pd rate=0.6
+[2026-07-08 19:51:24] SUMMARY 2e1pd rate=0.6: successful=111, req_throughput=0.51 , mean_e2e_ms=1343.61 , mean_ttft_ms=754.76 
+[2026-07-08 19:53:30] CLEANUP OK 2e1pd rate=0.6
+[2026-07-08 19:53:30] RATE ROUND 0.6 END failures_so_far=0
+[2026-07-08 19:53:30] RATE ROUND 0.8 BEGIN
+[2026-07-08 19:53:30] START 1agg rate=0.8 num_prompts=128
+[2026-07-08 20:00:53] BENCH OK 1agg rate=0.8
+[2026-07-08 20:00:53] SUMMARY 1agg rate=0.8: successful=128, req_throughput=0.46 , mean_e2e_ms=16641.43 , mean_ttft_ms=8261.17 
+[2026-07-08 20:01:04] CLEANUP OK 1agg rate=0.8
+[2026-07-08 20:01:04] START 2e1pd rate=0.8 num_prompts=128
+[2026-07-08 20:06:40] BENCH OK 2e1pd rate=0.8
+[2026-07-08 20:06:40] SUMMARY 2e1pd rate=0.8: successful=128, req_throughput=0.79 , mean_e2e_ms=1675.11 , mean_ttft_ms=821.92 
+[2026-07-08 20:06:47] CLEANUP OK 2e1pd rate=0.8
+[2026-07-08 20:06:47] RATE ROUND 0.8 END failures_so_far=0
+[2026-07-08 20:06:47] RATE ROUND 1.0 BEGIN
+[2026-07-08 20:06:47] START 1agg rate=1.0 num_prompts=128
+[2026-07-08 20:13:29] BENCH OK 1agg rate=1.0
+[2026-07-08 20:13:29] SUMMARY 1agg rate=1.0: successful=128, req_throughput=0.48 , mean_e2e_ms=16356.77 , mean_ttft_ms=9547.19 
+[2026-07-08 20:13:40] CLEANUP OK 1agg rate=1.0
+[2026-07-08 20:13:40] START 2e1pd rate=1.0 num_prompts=128
+[2026-07-08 20:18:35] BENCH OK 2e1pd rate=1.0
+[2026-07-08 20:18:35] SUMMARY 2e1pd rate=1.0: successful=78, req_throughput=0.60 , mean_e2e_ms=1350.29 , mean_ttft_ms=647.19 
+[2026-07-08 20:20:40] CLEANUP OK 2e1pd rate=1.0
+[2026-07-08 20:20:40] RATE ROUND 1.0 END failures_so_far=0
+[2026-07-08 20:20:40] RATE ROUND 1.2 BEGIN
+[2026-07-08 20:20:40] START 1agg rate=1.2 num_prompts=128
+[2026-07-08 20:27:44] BENCH OK 1agg rate=1.2
+[2026-07-08 20:27:44] SUMMARY 1agg rate=1.2: successful=128, req_throughput=0.47 , mean_e2e_ms=16592.41 , mean_ttft_ms=8512.33 
+[2026-07-08 20:27:51] CLEANUP OK 1agg rate=1.2
+[2026-07-08 20:27:51] START 2e1pd rate=1.2 num_prompts=128
+[2026-07-08 20:32:20] BENCH OK 2e1pd rate=1.2
+[2026-07-08 20:32:21] SUMMARY 2e1pd rate=1.2: successful=128, req_throughput=1.17 , mean_e2e_ms=1639.82 , mean_ttft_ms=799.37 
+[2026-07-08 20:32:27] CLEANUP OK 2e1pd rate=1.2
+[2026-07-08 20:32:27] RATE ROUND 1.2 END failures_so_far=0
+[2026-07-08 20:32:27] RATE ROUND 1.4 BEGIN
+[2026-07-08 20:32:27] START 1agg rate=1.4 num_prompts=128
+[2026-07-08 20:39:35] BENCH OK 1agg rate=1.4
+[2026-07-08 20:39:35] SUMMARY 1agg rate=1.4: successful=128, req_throughput=0.47 , mean_e2e_ms=16396.17 , mean_ttft_ms=7631.71 
+[2026-07-08 20:39:47] CLEANUP OK 1agg rate=1.4
+[2026-07-08 20:39:47] START 2e1pd rate=1.4 num_prompts=128
+[2026-07-08 20:44:09] BENCH OK 2e1pd rate=1.4
+[2026-07-08 20:44:09] SUMMARY 2e1pd rate=1.4: successful=128, req_throughput=1.36 , mean_e2e_ms=1642.36 , mean_ttft_ms=811.16 
+[2026-07-08 20:44:16] CLEANUP OK 2e1pd rate=1.4
+[2026-07-08 20:44:16] RATE ROUND 1.4 END failures_so_far=0
+[2026-07-08 20:44:16] RATE ROUND 1.6 BEGIN
+[2026-07-08 20:44:16] START 1agg rate=1.6 num_prompts=128
+[2026-07-08 20:51:34] BENCH OK 1agg rate=1.6
+[2026-07-08 20:51:34] SUMMARY 1agg rate=1.6: successful=128, req_throughput=0.46 , mean_e2e_ms=17060.86 , mean_ttft_ms=8249.01 
+[2026-07-08 20:51:40] CLEANUP OK 1agg rate=1.6
+[2026-07-08 20:51:40] START 2e1pd rate=1.6 num_prompts=128
+[2026-07-08 20:55:58] BENCH OK 2e1pd rate=1.6
+[2026-07-08 20:55:58] SUMMARY 2e1pd rate=1.6: successful=128, req_throughput=1.55 , mean_e2e_ms=1586.05 , mean_ttft_ms=898.83 
+[2026-07-08 20:56:05] CLEANUP OK 2e1pd rate=1.6
+[2026-07-08 20:56:05] RATE ROUND 1.6 END failures_so_far=0
+[2026-07-08 20:56:05] RATE ROUND 1.8 BEGIN
+[2026-07-08 20:56:05] START 1agg rate=1.8 num_prompts=128
+[2026-07-08 21:03:21] BENCH OK 1agg rate=1.8
+[2026-07-08 21:03:21] SUMMARY 1agg rate=1.8: successful=128, req_throughput=0.46 , mean_e2e_ms=16729.29 , mean_ttft_ms=7060.49 
+[2026-07-08 21:03:28] CLEANUP OK 1agg rate=1.8
+[2026-07-08 21:03:28] START 2e1pd rate=1.8 num_prompts=128
+[2026-07-08 21:07:23] BENCH OK 2e1pd rate=1.8
+[2026-07-08 21:07:23] SUMMARY 2e1pd rate=1.8: successful=128, req_throughput=1.74 , mean_e2e_ms=1630.43 , mean_ttft_ms=868.08 
+[2026-07-08 21:07:35] CLEANUP OK 2e1pd rate=1.8
+[2026-07-08 21:07:35] RATE ROUND 1.8 END failures_so_far=0
+[2026-07-08 21:07:35] RATE ROUND 2.0 BEGIN
+[2026-07-08 21:07:35] START 1agg rate=2.0 num_prompts=128
+[2026-07-08 21:14:51] BENCH OK 1agg rate=2.0
+[2026-07-08 21:14:51] SUMMARY 1agg rate=2.0: successful=128, req_throughput=0.47 , mean_e2e_ms=16752.78 , mean_ttft_ms=7627.78 
+[2026-07-08 21:15:03] CLEANUP OK 1agg rate=2.0
+[2026-07-08 21:15:03] START 2e1pd rate=2.0 num_prompts=128
+[2026-07-08 21:19:05] BENCH OK 2e1pd rate=2.0
+[2026-07-08 21:19:05] SUMMARY 2e1pd rate=2.0: successful=128, req_throughput=1.92 , mean_e2e_ms=1727.59 , mean_ttft_ms=944.27 
+[2026-07-08 21:19:17] CLEANUP OK 2e1pd rate=2.0
+[2026-07-08 21:19:17] RATE ROUND 2.0 END failures_so_far=0
+[2026-07-08 21:19:17] Repairing result ownership
+[2026-07-08 21:19:19] Matrix complete failures=0 result_root=/home/h-zheng/robin/llm-d/testing/results/llm_d_internvl35_30b_a3b_k8s_matrix_20260708_185011_n128

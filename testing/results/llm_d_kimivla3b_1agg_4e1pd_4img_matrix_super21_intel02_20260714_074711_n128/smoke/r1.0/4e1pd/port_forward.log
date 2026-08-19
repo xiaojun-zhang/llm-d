@@ -1,0 +1,13 @@
+Forwarding localhost:8000 -> llm-d router service/llmd-kimivla3b-4e1pd-epp:80 in shared-infra
+Forwarding from 127.0.0.1:8000 -> 8081
+Forwarding from [::1]:8000 -> 8081
+Handling connection for 8000
+Handling connection for 8000
+Handling connection for 8000
+Handling connection for 8000
+Handling connection for 8000
+Handling connection for 8000
+Handling connection for 8000
+Handling connection for 8000
+E0714 07:50:29.913675 1870793 portforward.go:424] "Unhandled Error" err="an error occurred forwarding 8000 -> 8081: error forwarding port 8081 to pod efa494abbfcf535ff2aa73c2b29e1eccbd46699384b92ad640e5c7efea47cd0a, uid : failed to find sandbox \"efa494abbfcf535ff2aa73c2b29e1eccbd46699384b92ad640e5c7efea47cd0a\" in store: not found"
+error: lost connection to pod

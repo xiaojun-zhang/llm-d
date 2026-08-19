@@ -1,0 +1,91 @@
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: llmd-kimivla3b-super21-h200-gpu7
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+        - name: gpu
+          exactly:
+            count: 1
+            deviceClassName: gpu.nvidia.com
+            selectors:
+              - cel:
+                  expression: |
+                    device.attributes["gpu.nvidia.com"]["uuid"] in [
+                      "GPU-5566797f-f7a9-dac4-32c7-f2f0ea80a1f7"
+                    ]
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: llmd-kimivla3b-intel02-b60-xpu0
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+        - name: xpu
+          exactly:
+            count: 1
+            deviceClassName: gpu.intel.com
+            selectors:
+              - cel:
+                  expression: |
+                    device.attributes["gpu.intel.com"].pciAddress == "0000:18:00.0"
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: llmd-kimivla3b-intel02-b60-xpu1
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+        - name: xpu
+          exactly:
+            count: 1
+            deviceClassName: gpu.intel.com
+            selectors:
+              - cel:
+                  expression: |
+                    device.attributes["gpu.intel.com"].pciAddress == "0000:1c:00.0"
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: llmd-kimivla3b-intel02-b60-xpu2
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+        - name: xpu
+          exactly:
+            count: 1
+            deviceClassName: gpu.intel.com
+            selectors:
+              - cel:
+                  expression: |
+                    device.attributes["gpu.intel.com"].pciAddress == "0000:54:00.0"
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: llmd-kimivla3b-intel02-b60-xpu3
+  namespace: shared-infra
+spec:
+  spec:
+    devices:
+      requests:
+        - name: xpu
+          exactly:
+            count: 1
+            deviceClassName: gpu.intel.com
+            selectors:
+              - cel:
+                  expression: |
+                    device.attributes["gpu.intel.com"].pciAddress == "0000:58:00.0"

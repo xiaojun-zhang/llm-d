@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: shared-infra
+
+resources:
+  - ../../../../../guides/recipes/modelserver/base/single-host/default
+  - ../../common
+
+namePrefix: llmd-kimivla3b-1agg-sglang-
+
+images:
+  - name: REPLACE_MODEL_SERVER_IMAGE
+    newName: amr-registry.caas.intel.com/taas/scalable-deploy-intel/main_dockerfile.dynamo_gpu
+    newTag: 477-e3682ee
+
+labels:
+  - pairs:
+      app.kubernetes.io/name: llmd-kimivla3b-epd
+      app.kubernetes.io/component: 1agg
+      llm-d.ai/guide: kimivla3b-epd-1agg
+      llm-d.ai/model: kimivla3b
+      llm-d.ai/topology: 1agg
+      llm-d.ai/role: decode
+      llm-d.ai/engine-type: sglang
+      llm-d.ai/accelerator-variant: gpu
+      llm-d.ai/accelerator-vendor: nvidia
+    includeSelectors: true
+    includeTemplates: true
+
+patches:
+  - path: patch-sglang.yaml
+    target:
+      kind: Deployment
+      name: decode
